@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Read the address book to find saved contacts and detect WhatsApp presence. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Only ever used to rename a contact the user explicitly chose to rename, to resolve a
+         name collision between two active schedules (see ScheduleSheetViewModel). Requested
+         lazily at the point of use, not at onboarding. -->
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+
+    <!-- For this app's own notifications - the "important call" 30-min-before reminder, the
+         collective "N calls pending" digest reminder, and reserved for listener-health status.
+         Never used to read other apps' notifications - that's the separate, user-granted
+         notification LISTENER access, requested via a Settings deep-link, not a permission. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Lets the "important call" reminder fire at an exact wall-clock time (30 minutes before
+         the call) even through Doze. Requested via a Settings deep-link, not a runtime dialog -
+         see ImportantCallReminderScheduler. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Re-arms important-call reminders after a reboot - exact alarms don't survive one. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- The authoritative source for regular (non-WhatsApp) call detection - see CallLogObserver.
+         Call type (incoming/outgoing/missed) and duration come straight from the OS's own call
+         log entry, written the moment a call ends, regardless of whether a notification for it
+         ever existed or what was in the foreground - unlike notification-based detection, which
+         on some OEMs never posts anything for an outgoing call until you background the call
+         screen. When this isn't granted, the app falls back to the notification-heuristic path
+         instead (WhatsAppCallListenerService's own category/showChronometer/actionCount signals).
+         WhatsApp itself is never in this log - its detection is unaffected either way. -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <!-- Deliberately NOT declared here: android.permission.INTERNET, READ_PHONE_STATE. None of
+         this app's own code makes a network call or reads phone state - READ_PHONE_STATE would
+         add nothing anyway (Android 12+ redacts caller info from telephony call-state callbacks
+         regardless of permission, and never exposed it for outgoing calls even before that -
+         READ_CALL_LOG above is the only real source).
+
+         NOTE: INTERNET, ACCESS_NETWORK_STATE, WAKE_LOCK, and the AD_ID/AdServices permissions
+         are still present in the *merged* manifest - Firebase Analytics/Crashlytics
+         (play-services-measurement) declare them in their own library manifests, and the
+         manifest merger adds them regardless of what's declared here. Advertising ID collection
+         is explicitly disabled below (google_analytics_adid_collection_enabled) since this app
+         has no ads/attribution use case; see AppAnalytics/AppLogger for what data actually
+         reaches Firebase (categorical event names/params and non-identifying log breadcrumbs
+         only - never contact names or phone numbers). -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+
+    <application
+        android:name=".KeepInTouchApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MyApplication">
+
+        <!-- No ads/attribution use case in this app - opt out of Google Analytics' default
+             advertising-ID collection rather than declare an AD_ID use we don't have. -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".notification.WhatsAppCallListenerService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".data.reminder.ImportantCallReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".data.reminder.DigestReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".data.reminder.BootReminderRescheduler"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

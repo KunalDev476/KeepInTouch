@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "397884901379",
+    "project_id": "keepintouch-287eb",
+    "storage_bucket": "keepintouch-287eb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:397884901379:android:ebbea0dfea6f27e8f96636",
+        "android_client_info": {
+          "package_name": "com.pragmaapps.keepintouch"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDT6MTQpOhTeCfAV222Ai7jTO4uoJYvXE0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

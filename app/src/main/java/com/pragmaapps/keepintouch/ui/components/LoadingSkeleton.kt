@@ -1,0 +1,87 @@
+package com.pragmaapps.keepintouch.ui.components
+
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.pragmaapps.keepintouch.ui.theme.Spacing
+
+/**
+ * A placeholder list, shaped like real rows, shown while a screen's first real data emission is
+ * still in flight - so the first frame a user sees is never "empty" (which reads as "nothing
+ * here") when it's actually just "not loaded yet". Pulses gently via a looping alpha animation to
+ * signal "still working" without implying a determinate progress amount.
+ */
+@Composable
+fun LoadingSkeleton(modifier: Modifier = Modifier, rowCount: Int = 4) {
+    val transition = rememberInfiniteTransition(label = "skeletonPulse")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "skeletonAlpha"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+    ) {
+        repeat(rowCount) {
+            SkeletonRow(alpha)
+        }
+    }
+}
+
+@Composable
+private fun SkeletonRow(alpha: Float) {
+    val color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha * 0.16f)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Column(
+            modifier = Modifier
+                .size(40.dp)
+                .background(color, CircleShape)
+        ) {}
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Column(
+                modifier = Modifier
+                    .width(140.dp)
+                    .height(14.dp)
+                    .background(color, RoundedCornerShape(4.dp))
+            ) {}
+            Column(
+                modifier = Modifier
+                    .width(90.dp)
+                    .height(12.dp)
+                    .background(color, RoundedCornerShape(4.dp))
+            ) {}
+        }
+    }
+}

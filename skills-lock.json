@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "firebase-basics": {
+      "source": "firebase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/firebase-basics/SKILL.md",
+      "computedHash": "4c26034cf29e2abccad221a59fe66d62d1f91c9a131c4f8efad69035b7bb9394"
+    },
+    "firebase-crashlytics": {
+      "source": "firebase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/firebase-crashlytics/SKILL.md",
+      "computedHash": "62a51efdc3240eed27697e14bbb8a29ebb8c94530fd3a1c851e747b90804d69b"
+    }
+  }
+}
