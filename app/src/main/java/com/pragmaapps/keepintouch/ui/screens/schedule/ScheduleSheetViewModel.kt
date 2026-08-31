@@ -3,7 +3,6 @@ package com.pragmaapps.keepintouch.ui.screens.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pragmaapps.keepintouch.domain.model.Contact
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
@@ -33,12 +32,17 @@ data class ScheduleSheetUiState(
     val saved: Boolean = false,
     val notFound: Boolean = false,
     val nameCollision: NameCollisionInfo? = null,
-    val importance: Importance = Importance.MEDIUM,
     /** Minutes since midnight, e.g. 10:00am = 600. Null = no specific call time set. */
     val preferredTimeMinutes: Int? = null,
-    val isImportant: Boolean = false,
-    val importantWithoutTimeError: Boolean = false
-)
+    /** Window end, minutes since midnight. Only meaningful alongside [preferredTimeMinutes]. */
+    val comfortableTimeEndMinutes: Int? = null
+) {
+    /** "Must not be missed" is derived automatically from having a call time set - not a separate manual toggle. */
+    val isImportant: Boolean get() = preferredTimeMinutes != null
+
+    /** A start time plus a window end = "comfortable to call" range rather than a single must-not-miss instant. */
+    val isAvailabilityWindow: Boolean get() = preferredTimeMinutes != null && comfortableTimeEndMinutes != null
+}
 
 /**
  * Two active schedules can never share a normalized name - a call notification only ever carries
@@ -97,9 +101,8 @@ class ScheduleSheetViewModel @Inject constructor(
                             recurrence = schedule.recurrence,
                             nextDueDate = schedule.nextDueDate,
                             note = schedule.note.orEmpty(),
-                            importance = schedule.importance,
                             preferredTimeMinutes = schedule.preferredTimeMinutes,
-                            isImportant = schedule.isImportant
+                            comfortableTimeEndMinutes = schedule.comfortableTimeEndMinutes
                         )
                     }
                 }
@@ -119,28 +122,21 @@ class ScheduleSheetViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(note = note)
     }
 
-    fun onImportanceChange(importance: Importance) {
-        _uiState.value = _uiState.value.copy(importance = importance)
-    }
-
-    /** minutes = null clears the call time; setting it also clears the "important needs a time" error. */
-    fun onPreferredTimeChange(minutes: Int?) {
-        _uiState.value = _uiState.value.copy(preferredTimeMinutes = minutes, importantWithoutTimeError = false)
-    }
-
-    fun onImportantChange(important: Boolean) {
-        _uiState.value = _uiState.value.copy(isImportant = important, importantWithoutTimeError = false)
+    /**
+     * The call-time picker dialog owns the single-time/window toggle and its own "end must be
+     * after start" validation (see CallTimePicker in ScheduleSheet.kt) and only ever calls this
+     * once with an already-consistent pair - [end] is never non-null while [start] is null.
+     */
+    fun onCallTimeChange(start: Int?, end: Int?) {
+        _uiState.value = _uiState.value.copy(
+            preferredTimeMinutes = start,
+            comfortableTimeEndMinutes = if (start != null) end else null
+        )
     }
 
     fun save() {
         val state = _uiState.value
         val contact = state.contact ?: return
-
-        // The 30-min-before reminder has nothing to count down from without a call time.
-        if (state.isImportant && state.preferredTimeMinutes == null) {
-            _uiState.value = _uiState.value.copy(importantWithoutTimeError = true)
-            return
-        }
 
         viewModelScope.launch {
             val existing = existingSchedule
@@ -150,9 +146,9 @@ class ScheduleSheetViewModel @Inject constructor(
                         recurrence = state.recurrence,
                         nextDueDate = state.nextDueDate,
                         note = state.note.ifBlank { null },
-                        importance = state.importance,
                         preferredTimeMinutes = state.preferredTimeMinutes,
-                        isImportant = state.isImportant
+                        isImportant = state.isImportant,
+                        comfortableTimeEndMinutes = state.comfortableTimeEndMinutes
                     )
                 )
                 _uiState.value = _uiState.value.copy(saved = true)
@@ -177,9 +173,9 @@ class ScheduleSheetViewModel @Inject constructor(
                 startDate = state.nextDueDate,
                 nextDueDate = state.nextDueDate,
                 note = state.note.ifBlank { null },
-                importance = state.importance,
                 preferredTimeMinutes = state.preferredTimeMinutes,
-                isImportant = state.isImportant
+                isImportant = state.isImportant,
+                comfortableTimeEndMinutes = state.comfortableTimeEndMinutes
             )
             _uiState.value = _uiState.value.copy(saved = true)
         }

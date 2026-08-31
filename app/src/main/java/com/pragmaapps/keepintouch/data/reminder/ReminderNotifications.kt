@@ -44,7 +44,7 @@ object ReminderNotifications {
                 "Important call reminders",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "A heads-up 30 minutes before a call you marked as must-not-miss."
+                description = "A heads-up 10 minutes before a call you marked as must-not-miss, or before an availability window you set."
             }
         )
         manager.createNotificationChannel(

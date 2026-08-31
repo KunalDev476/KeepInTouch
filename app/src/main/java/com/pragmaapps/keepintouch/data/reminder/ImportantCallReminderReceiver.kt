@@ -9,24 +9,44 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.domain.model.Schedule
+import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
+import com.pragmaapps.keepintouch.domain.util.PriorityEngine
+import com.pragmaapps.keepintouch.domain.util.RecurrenceEngine
+import dagger.hilt.android.AndroidEntryPoint
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 private const val TAG = "ImportantCallReminder"
+private const val NOTIFICATION_ID = 999_002
 
 /**
- * Fired by AlarmManager exactly once, 30 minutes before an "important" schedule's due time (see
- * ImportantCallReminderScheduler). All the data needed to post the notification travels in the
- * alarm's Intent extras - no DB read here, so this stays a plain BroadcastReceiver rather than
- * needing Hilt injection.
+ * Fired by AlarmManager, once per important schedule, 10 minutes before its due time / window
+ * start (still one exact alarm armed per schedule - see ImportantCallReminderScheduler). Rather
+ * than posting a standalone notification for just the schedule whose alarm happened to fire,
+ * every firing re-reads live from the DB (needs @AndroidEntryPoint + goAsync(), same reasoning as
+ * DigestReminderReceiver - the whole point is to reflect what's ACTUALLY still pending right now,
+ * not what was true when this alarm was armed) and merges in every important schedule whose own
+ * 10-minutes-before threshold has already passed and that still hasn't been fulfilled.
  *
- * Uses goAsync(): this is exactly the "app was closed/swiped away" wake-up path, so the process
- * may be short-lived once onReceive() returns - without goAsync(), AppLogger's async DB write
- * (and, in principle, the notification post itself) could get killed mid-flight before it lands,
- * which would silently defeat the whole point of logging this specific code path.
+ * That's what makes an earlier still-outstanding reminder (say, 2:00) carry forward into a later
+ * one (3:00's alarm) as a single combined notification, while a schedule that DID get fulfilled in
+ * the meantime naturally drops out - fulfilling advances its nextDueDate into the future, so
+ * RecurrenceEngine.isDue stops matching it (see ProcessFinalizedCallUseCase.tryFulfill).
+ *
+ * One fixed notification ID: each new firing replaces the previous merged notification instead of
+ * stacking a duplicate alongside it.
  */
+@AndroidEntryPoint
 class ImportantCallReminderReceiver : BroadcastReceiver() {
+
+    @Inject lateinit var scheduleRepository: ScheduleRepository
 
     private val timeFormatter = DateTimeFormatter.ofPattern("h:mm a")
 
@@ -34,44 +54,78 @@ class ImportantCallReminderReceiver : BroadcastReceiver() {
         if (intent.action != ImportantCallReminderScheduler.ACTION_REMIND) return
         val pendingResult = goAsync()
 
-        try {
-            val scheduleId = intent.getLongExtra(ImportantCallReminderScheduler.EXTRA_SCHEDULE_ID, -1L)
-            val contactName = intent.getStringExtra(ImportantCallReminderScheduler.EXTRA_CONTACT_NAME)
-            val dueInstant = intent.getLongExtra(ImportantCallReminderScheduler.EXTRA_DUE_INSTANT, -1L)
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                val now = System.currentTimeMillis()
+                val due = scheduleRepository.getActiveSnapshot()
+                    .filter { schedule -> isReminderPending(schedule, now) }
+                    .sortedBy { PriorityEngine.dueInstantMillis(it) }
 
-            if (contactName == null) {
-                AppLogger.e(TAG, "Alarm fired for scheduleId=$scheduleId but had no contact name extra - dropping")
-                return
+                if (due.isEmpty()) {
+                    AppLogger.d(TAG, "Reminder alarm fired but nothing is currently pending a reminder - not posting")
+                    return@launch
+                }
+
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    AppLogger.e(TAG, "Reminder fired with ${due.size} schedule(s) pending but POST_NOTIFICATIONS isn't granted - dropped")
+                    return@launch
+                }
+
+                postReminder(context, due)
+                AppLogger.i(TAG, "Posted reminder for ${due.size} schedule(s): ${due.joinToString { it.displayNameSnapshot }}")
+            } catch (t: Throwable) {
+                AppLogger.e(TAG, "Failed to post important-call reminder", t)
+            } finally {
+                pendingResult.finish()
             }
-
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                PackageManager.PERMISSION_GRANTED
-            ) {
-                AppLogger.e(TAG, "Alarm fired for scheduleId=$scheduleId ($contactName) but POST_NOTIFICATIONS isn't granted - reminder silently dropped")
-                return
-            }
-
-            val timeLabel = if (dueInstant > 0) {
-                Instant.ofEpochMilli(dueInstant).atZone(ZoneId.systemDefault()).format(timeFormatter)
-            } else {
-                "soon"
-            }
-
-            val notification = NotificationCompat.Builder(context, ReminderNotifications.CHANNEL_ID_IMPORTANT)
-                .setSmallIcon(android.R.drawable.ic_popup_reminder)
-                .setContentTitle("Important call coming up")
-                .setContentText("You have an important call with $contactName at $timeLabel")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setAutoCancel(true)
-                .build()
-
-            NotificationManagerCompat.from(context).notify(scheduleId.toInt(), notification)
-            AppLogger.i(TAG, "Posted important-call reminder for scheduleId=$scheduleId ($contactName at $timeLabel)")
-        } catch (t: Throwable) {
-            AppLogger.e(TAG, "Failed to post important-call reminder", t)
-        } finally {
-            pendingResult.finish()
         }
     }
+
+    /** This schedule's own 10-minutes-before threshold has been reached, and it's still unfulfilled - regardless of whether ITS alarm is what fired just now. */
+    private fun isReminderPending(schedule: Schedule, now: Long): Boolean =
+        schedule.isImportant && schedule.preferredTimeMinutes != null &&
+            RecurrenceEngine.isDue(schedule, now) &&
+            PriorityEngine.dueInstantMillis(schedule) - ImportantCallReminderScheduler.REMINDER_LEAD_MS <= now
+
+    private fun postReminder(context: Context, due: List<Schedule>) {
+        val (title, text) = if (due.size == 1) {
+            singleReminderText(due[0])
+        } else {
+            "Calls coming up" to due.joinToString(", ") { schedule -> schedule.displayNameSnapshot + timeSuffix(schedule) }
+        }
+
+        val notification = NotificationCompat.Builder(context, ReminderNotifications.CHANNEL_ID_IMPORTANT)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun singleReminderText(schedule: Schedule): Pair<String, String> {
+        val timeLabel = formatTime(PriorityEngine.dueInstantMillis(schedule))
+        val windowEnd = PriorityEngine.windowEndInstantMillis(schedule)
+        return if (windowEnd != null) {
+            "Good time to call" to
+                "${schedule.displayNameSnapshot} is usually free from $timeLabel to ${formatTime(windowEnd)} - this is a great time to call."
+        } else {
+            "Important call coming up" to "You have an important call with ${schedule.displayNameSnapshot} at $timeLabel"
+        }
+    }
+
+    private fun timeSuffix(schedule: Schedule): String {
+        val start = formatTime(PriorityEngine.dueInstantMillis(schedule))
+        val windowEnd = PriorityEngine.windowEndInstantMillis(schedule)
+        return if (windowEnd != null) " ($start-${formatTime(windowEnd)})" else " ($start)"
+    }
+
+    private fun formatTime(instant: Long): String =
+        Instant.ofEpochMilli(instant).atZone(ZoneId.systemDefault()).format(timeFormatter)
 }

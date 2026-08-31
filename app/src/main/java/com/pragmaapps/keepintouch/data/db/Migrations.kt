@@ -55,7 +55,7 @@ object Migrations {
 
     /**
      * Backs the collective "N calls pending" digest reminder (Settings -> Reminders) - a daily
-     * time-of-day slot, separate from the per-schedule 30-min-before "Important" alarm. The
+     * time-of-day slot, separate from the per-schedule 10-min-before "Important" alarm. The
      * default 8pm row is seeded by DigestReminderRepositoryImpl on first read, not here - Room
      * migrations shouldn't depend on domain/default-data logic living outside the DB layer.
      */
@@ -72,6 +72,67 @@ object Migrations {
                 )
                 """.trimIndent()
             )
+        }
+    }
+
+    /**
+     * Drops schedules.importance (the old manual Low/Medium/High priority pick) - priority is now
+     * derived live from lateness instead of stored. SQLite's ALTER TABLE can't drop a column
+     * directly (portably, across the API levels this app supports), so this rebuilds the table:
+     * new table without the column, copy the rest of the data across, drop the old table, rename.
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE `schedules_new` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `contactLookupKey` TEXT NOT NULL,
+                    `displayNameSnapshot` TEXT NOT NULL,
+                    `normalizedNameSnapshot` TEXT NOT NULL,
+                    `numberSnapshot` TEXT,
+                    `recurrence` TEXT NOT NULL,
+                    `startDate` INTEGER NOT NULL,
+                    `nextDueDate` INTEGER NOT NULL,
+                    `active` INTEGER NOT NULL,
+                    `note` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `preferredTimeMinutes` INTEGER,
+                    `isImportant` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO `schedules_new` (
+                    `id`, `contactLookupKey`, `displayNameSnapshot`, `normalizedNameSnapshot`, `numberSnapshot`,
+                    `recurrence`, `startDate`, `nextDueDate`, `active`, `note`, `createdAt`,
+                    `preferredTimeMinutes`, `isImportant`
+                )
+                SELECT
+                    `id`, `contactLookupKey`, `displayNameSnapshot`, `normalizedNameSnapshot`, `numberSnapshot`,
+                    `recurrence`, `startDate`, `nextDueDate`, `active`, `note`, `createdAt`,
+                    `preferredTimeMinutes`, `isImportant`
+                FROM `schedules`
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE `schedules`")
+            db.execSQL("ALTER TABLE `schedules_new` RENAME TO `schedules`")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_schedules_contactLookupKey` ON `schedules` (`contactLookupKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_schedules_normalizedNameSnapshot` ON `schedules` (`normalizedNameSnapshot`)")
+        }
+    }
+
+    /**
+     * Adds schedules.comfortableTimeEndMinutes: an optional window end, alongside the existing
+     * preferredTimeMinutes start. Nullable, no default needed - existing schedules keep their
+     * single-time "Important" behavior (see Schedule.comfortableTimeEndMinutes doc). Also the
+     * migration that dropped the reminder lead time from 30 to 10 minutes - a code-only change
+     * (ImportantCallReminderScheduler.REMINDER_LEAD_MS), not reflected in this schema diff.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `schedules` ADD COLUMN `comfortableTimeEndMinutes` INTEGER")
         }
     }
 }

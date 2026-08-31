@@ -1,6 +1,5 @@
 package com.pragmaapps.keepintouch.domain.util
 
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import org.junit.Assert.assertEquals
@@ -17,8 +16,8 @@ class PriorityEngineTest {
     private fun schedule(
         recurrence: Recurrence,
         nextDueDate: Long,
-        importance: Importance = Importance.MEDIUM,
-        preferredTimeMinutes: Int? = null
+        preferredTimeMinutes: Int? = null,
+        comfortableTimeEndMinutes: Int? = null
     ) = Schedule(
         id = 1,
         contactLookupKey = "key",
@@ -31,8 +30,8 @@ class PriorityEngineTest {
         active = true,
         note = null,
         createdAt = 0,
-        importance = importance,
-        preferredTimeMinutes = preferredTimeMinutes
+        preferredTimeMinutes = preferredTimeMinutes,
+        comfortableTimeEndMinutes = comfortableTimeEndMinutes
     )
 
     @Test
@@ -55,31 +54,30 @@ class PriorityEngineTest {
     }
 
     @Test
-    fun `missing multiple cycles compounds faster than linear`() {
+    fun `one full cadence late scores exactly 100 percent`() {
+        val daily = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10))
+        assertEquals(100.0, PriorityEngine.score(daily, now = dayMillis(11)), 0.0001)
+
+        val weekly = schedule(Recurrence.WEEKLY, nextDueDate = dayMillis(10))
+        assertEquals(100.0, PriorityEngine.score(weekly, now = dayMillis(17)), 0.0001)
+    }
+
+    @Test
+    fun `score scales linearly with cycles missed`() {
         val s = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10))
         val oneCycleLate = PriorityEngine.score(s, now = dayMillis(11))
         val twoCyclesLate = PriorityEngine.score(s, now = dayMillis(12))
 
-        // A compounding (exponent > 1) curve means 2x the lateness is more than 2x the score.
-        assertTrue(twoCyclesLate > oneCycleLate * 2)
+        assertEquals(oneCycleLate * 2, twoCyclesLate, 0.0001)
     }
 
     @Test
-    fun `one-time schedule scores higher than a daily schedule at identical lateness`() {
+    fun `one-time and daily schedules score identically at identical lateness`() {
         val oneTime = schedule(Recurrence.ONE_TIME, nextDueDate = dayMillis(10))
         val daily = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10))
         val now = dayMillis(11)
 
-        assertTrue(PriorityEngine.score(oneTime, now) > PriorityEngine.score(daily, now))
-    }
-
-    @Test
-    fun `high importance outranks low importance at identical lateness`() {
-        val low = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10), importance = Importance.LOW)
-        val high = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10), importance = Importance.HIGH)
-        val now = dayMillis(11)
-
-        assertTrue(PriorityEngine.score(high, now) > PriorityEngine.score(low, now))
+        assertEquals(PriorityEngine.score(daily, now), PriorityEngine.score(oneTime, now), 0.0001)
     }
 
     @Test
@@ -103,15 +101,6 @@ class PriorityEngineTest {
     }
 
     @Test
-    fun `lateRatio is unaffected by importance`() {
-        val low = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10), importance = Importance.LOW)
-        val high = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10), importance = Importance.HIGH)
-        val now = dayMillis(11)
-
-        assertEquals(PriorityEngine.lateRatio(low, now), PriorityEngine.lateRatio(high, now), 0.0001)
-    }
-
-    @Test
     fun `escalationFraction is coerced between 0 and 1 and reaches 1 once fully escalated`() {
         val s = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10))
         assertEquals(0f, PriorityEngine.escalationFraction(s, now = dayMillis(5)), 0.0001f)
@@ -121,5 +110,23 @@ class PriorityEngineTest {
 
         val veryLate = PriorityEngine.escalationFraction(s, now = dayMillis(50))
         assertEquals(1f, veryLate, 0.0001f)
+    }
+
+    @Test
+    fun `windowEndInstantMillis is null without a comfortable end time`() {
+        val s = schedule(Recurrence.DAILY, nextDueDate = dayMillis(10), preferredTimeMinutes = 10 * 60)
+        assertEquals(null, PriorityEngine.windowEndInstantMillis(s))
+    }
+
+    @Test
+    fun `windowEndInstantMillis lands on the due day at the configured minute`() {
+        val s = schedule(
+            Recurrence.DAILY,
+            nextDueDate = dayMillis(10),
+            preferredTimeMinutes = 10 * 60, // 10am
+            comfortableTimeEndMinutes = 11 * 60 // 11am
+        )
+        val expected = dayMillis(10) + 11 * 60 * 60 * 1000L
+        assertEquals(expected, PriorityEngine.windowEndInstantMillis(s))
     }
 }

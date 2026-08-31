@@ -7,17 +7,6 @@ enum class Recurrence {
     WEEKLY
 }
 
-/**
- * User-set weight on how much a schedule's lateness should matter, applied as a multiplier over
- * the computed lateness score in [com.pragmaapps.keepintouch.domain.util.PriorityEngine] - not a
- * standalone ranking. Mandatory per schedule (defaults to MEDIUM, always shown at creation).
- */
-enum class Importance(val multiplier: Double) {
-    LOW(0.5),
-    MEDIUM(1.0),
-    HIGH(2.0)
-}
-
 /** A schedule's health right now, relative to [Schedule.nextDueDate] - see RecurrenceEngine.status(). */
 enum class ScheduleStatus {
     /** Not active, or the current cycle isn't due yet - the previous one must have been completed to get here. */

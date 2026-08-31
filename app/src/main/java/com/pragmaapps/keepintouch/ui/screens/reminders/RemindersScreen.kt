@@ -86,7 +86,7 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
             Text(
                 "Set reminders for when you want to be told about calls you still need to make. " +
                     "Each one covers everything pending at that moment, normal and important together. " +
-                    "Important calls also get their own separate reminder 30 minutes before the call time you set for them.",
+                    "Important calls also get their own separate reminder 10 minutes before the call time (or availability window) you set for them.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(Spacing.lg)

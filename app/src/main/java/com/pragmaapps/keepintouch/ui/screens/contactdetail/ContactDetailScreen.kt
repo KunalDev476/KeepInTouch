@@ -56,7 +56,7 @@ import com.pragmaapps.keepintouch.domain.util.PhoneMasking
 import com.pragmaapps.keepintouch.domain.util.PriorityEngine
 import com.pragmaapps.keepintouch.domain.util.RecurrenceEngine
 import com.pragmaapps.keepintouch.ui.components.AvatarWithWhatsAppBadge
-import com.pragmaapps.keepintouch.ui.components.ImportanceChip
+import com.pragmaapps.keepintouch.ui.components.PriorityChip
 import com.pragmaapps.keepintouch.ui.components.RecurrenceChip
 import com.pragmaapps.keepintouch.ui.components.ScheduleStatusIcon
 import com.pragmaapps.keepintouch.ui.components.label
@@ -113,6 +113,13 @@ fun ContactDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = Spacing.lg),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+                    ) {
+                        StatTile(label = "Scheduled calls", value = "${uiState.scheduledCallCount}", modifier = Modifier.weight(1f))
+                        StatTile(label = "Unscheduled calls", value = "${uiState.unscheduledCallCount}", modifier = Modifier.weight(1f))
                     }
                     Column(Modifier.padding(top = Spacing.lg)) {
                         uiState.schedule?.let { schedule ->
@@ -180,15 +187,14 @@ private fun ScheduleCard(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 RecurrenceChip(schedule.recurrence)
-                ImportanceChip(schedule.importance)
+                val now = System.currentTimeMillis()
+                PriorityChip(PriorityEngine.score(schedule, now))
                 if (!schedule.active) {
                     Text("Paused", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(Modifier.weight(1f))
-                val now = System.currentTimeMillis()
                 ScheduleStatusIcon(
                     status = RecurrenceEngine.status(schedule, now),
-                    importance = schedule.importance,
                     lateFraction = PriorityEngine.escalationFraction(schedule, now)
                 )
             }
@@ -197,8 +203,11 @@ private fun ScheduleCard(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 Text("Next due ${DateMath.formatDate(schedule.nextDueDate)}", style = MaterialTheme.typography.bodyMedium)
-                schedule.preferredTimeMinutes?.let {
-                    Text("at ${DateMath.formatTimeOfDay(it)}", style = MaterialTheme.typography.bodyMedium)
+                schedule.preferredTimeMinutes?.let { start ->
+                    val label = schedule.comfortableTimeEndMinutes?.let { end ->
+                        "${DateMath.formatTimeOfDay(start)} - ${DateMath.formatTimeOfDay(end)}"
+                    } ?: "at ${DateMath.formatTimeOfDay(start)}"
+                    Text(label, style = MaterialTheme.typography.bodyMedium)
                 }
             }
             schedule.note?.takeIf { it.isNotBlank() }?.let {

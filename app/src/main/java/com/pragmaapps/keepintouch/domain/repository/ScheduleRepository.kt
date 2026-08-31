@@ -1,7 +1,6 @@
 package com.pragmaapps.keepintouch.domain.repository
 
 import com.pragmaapps.keepintouch.domain.model.Contact
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import kotlinx.coroutines.flow.Flow
@@ -26,9 +25,9 @@ interface ScheduleRepository {
         startDate: Long,
         nextDueDate: Long,
         note: String?,
-        importance: Importance = Importance.MEDIUM,
         preferredTimeMinutes: Int? = null,
-        isImportant: Boolean = false
+        isImportant: Boolean = false,
+        comfortableTimeEndMinutes: Int? = null
     ): Long
 
     suspend fun update(schedule: Schedule)

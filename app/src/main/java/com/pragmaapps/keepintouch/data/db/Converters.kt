@@ -2,7 +2,6 @@ package com.pragmaapps.keepintouch.data.db
 
 import androidx.room.TypeConverter
 import com.pragmaapps.keepintouch.domain.model.Direction
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.LogLevel
 import com.pragmaapps.keepintouch.domain.model.MatchConfidence
 import com.pragmaapps.keepintouch.domain.model.Recurrence
@@ -18,12 +17,6 @@ class Converters {
 
     @TypeConverter
     fun toRecurrence(value: String): Recurrence = Recurrence.valueOf(value)
-
-    @TypeConverter
-    fun fromImportance(value: Importance): String = value.name
-
-    @TypeConverter
-    fun toImportance(value: String): Importance = Importance.valueOf(value)
 
     @TypeConverter
     fun fromDirection(value: Direction): String = value.name

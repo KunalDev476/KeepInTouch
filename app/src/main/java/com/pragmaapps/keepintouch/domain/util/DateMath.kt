@@ -2,7 +2,9 @@ package com.pragmaapps.keepintouch.domain.util
 
 import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 /** Small date-math helpers shared by recurrence and due-date logic. Pure/JVM-only (java.time, not android.*). */
 object DateMath {
@@ -22,8 +24,11 @@ object DateMath {
             Instant.ofEpochMilli(toEpochMillis).atZone(zone).toLocalDate()
         )
 
+    /** App-wide date display format, e.g. "19 Aug 2026" - used everywhere a date is shown to the user. */
+    private val dateFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)
+
     fun formatDate(epochMillis: Long): String =
-        Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate().toString()
+        Instant.ofEpochMilli(epochMillis).atZone(zone).toLocalDate().format(dateFormatter)
 
     /** Wall-clock time of [epochMillis] in the device's zone, as a 12-hour "h:mm a" label. */
     fun formatTime(epochMillis: Long): String {

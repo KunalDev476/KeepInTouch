@@ -2,9 +2,20 @@
 
 package com.pragmaapps.keepintouch.ui.screens.schedule
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -59,19 +70,28 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.util.DateMath
+import com.pragmaapps.keepintouch.ui.components.SegmentedControl
 import com.pragmaapps.keepintouch.ui.components.label
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import kotlinx.coroutines.launch
+
+/** Latest minute-of-day a time picker can express (23:59). */
+private const val MAX_MINUTES_OF_DAY = 23 * 60 + 59
+
+/**
+ * Tighter than ButtonDefaults.ContentPadding's default 24.dp horizontal - Next due and Call time
+ * sit side by side and Call time's label can grow into a full "6:00 AM - 8:00 PM" range, so both
+ * give up some of their own internal padding to leave more room for that growth.
+ */
+private val COMPACT_BUTTON_PADDING = PaddingValues(horizontal = Spacing.md, vertical = Spacing.sm)
 
 @Composable
 fun ScheduleSheet(
@@ -110,8 +130,9 @@ fun ScheduleSheet(
 
     /**
      * SCHEDULE_EXACT_ALARM isn't a runtime dialog permission - like notification-listener access,
-     * it's granted from a Settings screen. Fired once, the moment "Mark important" is switched on,
-     * since that's the only feature that needs it.
+     * it's granted from a Settings screen. Fired once, the moment a call time is set - a schedule
+     * becomes "Important" automatically as soon as it has one (see ScheduleSheetUiState.isImportant),
+     * and that's the only feature that needs this permission.
      */
     fun requestExactAlarmAccessIfNeeded() {
         val alarmManager = ContextCompat.getSystemService(context, AlarmManager::class.java)
@@ -165,43 +186,42 @@ fun ScheduleSheet(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Switch(
-                                checked = uiState.isImportant,
-                                onCheckedChange = { checked ->
-                                    if (checked) {
-                                        requestExactAlarmAccessIfNeeded()
-                                        requestNotificationPermissionIfNeeded()
-                                    }
-                                    viewModel.onImportantChange(checked)
-                                },
-                                modifier = Modifier.scale(0.75f)
-                            )
-                            Text("Important", style = MaterialTheme.typography.titleSmall)
-                            val importantTooltipState = rememberTooltipState(isPersistent = true)
-                            val tooltipScope = rememberCoroutineScope()
-                            TooltipBox(
-                                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                tooltip = {
-                                    PlainTooltip {
-                                        Text("Must not be missed - a reminder fires 30 minutes before the call time above.")
-                                    }
-                                },
-                                state = importantTooltipState
-                            ) {
-                                IconButton(
-                                    onClick = { tooltipScope.launch { importantTooltipState.show() } },
-                                    modifier = Modifier.size(28.dp)
+                        if (uiState.isImportant) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    if (uiState.isAvailabilityWindow) "Availability window" else "Important",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                val importantTooltipState = rememberTooltipState(isPersistent = true)
+                                val tooltipScope = rememberCoroutineScope()
+                                TooltipBox(
+                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                    tooltip = {
+                                        PlainTooltip {
+                                            Text(
+                                                if (uiState.isAvailabilityWindow) {
+                                                    "A reminder fires 10 minutes before this window starts, suggesting it's " +
+                                                        "a good time to call. Switch back to a single time, or clear the call time, to undo this."
+                                                } else {
+                                                    "Marked important automatically because a call time is set - " +
+                                                        "a reminder fires 10 minutes before it. Clear the call time to undo this."
+                                                }
+                                            )
+                                        }
+                                    },
+                                    state = importantTooltipState
                                 ) {
-                                    Icon(
-                                        Icons.Filled.Info,
-                                        contentDescription = "What does Important mean?",
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                    IconButton(
+                                        onClick = { tooltipScope.launch { importantTooltipState.show() } },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Info,
+                                            contentDescription = "What does Important mean?",
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -246,23 +266,23 @@ fun ScheduleSheet(
                         onSelect = viewModel::onRecurrenceChange
                     )
 
-                    DropdownSelector(
-                        label = "* Priority",
-                        selected = uiState.importance,
-                        options = Importance.entries,
-                        optionLabel = { it.label() },
-                        onSelect = viewModel::onImportanceChange
-                    )
-
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
+                    // Next due only ever needs as much width as its date label - giving it that
+                    // instead of an equal half leaves Call time (which can grow to a full
+                    // "6:00 AM - 8:00 PM" range) the rest of the row to expand into on its own left
+                    // edge, so growing never pushes its delete button past the screen.
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                        DueDatePicker(nextDueDate = uiState.nextDueDate, onPick = viewModel::onDueDateChange)
                         Box(Modifier.weight(1f)) {
-                            DueDatePicker(nextDueDate = uiState.nextDueDate, onPick = viewModel::onDueDateChange)
-                        }
-                        Box(Modifier.weight(1f)) {
-                            DueTimePicker(
-                                preferredTimeMinutes = uiState.preferredTimeMinutes,
-                                onPick = viewModel::onPreferredTimeChange,
-                                isError = uiState.importantWithoutTimeError
+                            CallTimePicker(
+                                startMinutes = uiState.preferredTimeMinutes,
+                                endMinutes = uiState.comfortableTimeEndMinutes,
+                                onConfirm = { start, end ->
+                                    if (start != null) {
+                                        requestExactAlarmAccessIfNeeded()
+                                        requestNotificationPermissionIfNeeded()
+                                    }
+                                    viewModel.onCallTimeChange(start, end)
+                                }
                             )
                         }
                     }
@@ -373,50 +393,170 @@ private fun <T> DropdownSelector(
     }
 }
 
-/** Minutes since midnight <-> a 12-hour "h:mm a" label, and a dialog wrapping Material3's TimePicker (M3 ships no TimePickerDialog of its own, unlike DatePickerDialog). */
-@Composable
-private fun DueTimePicker(preferredTimeMinutes: Int?, onPick: (Int?) -> Unit, isError: Boolean) {
-    var showPicker by remember { mutableStateOf(false) }
+/** Which of the two clocks in [CallTimePickerDialog] the shared TimePicker is currently editing. */
+private enum class TimeField { START, END }
 
-    Column {
+/**
+ * Minutes since midnight <-> a 12-hour "h:mm a" label, and the entry point for
+ * [CallTimePickerDialog]. Setting a call time here is also what makes a schedule "Important" (see
+ * ScheduleSheetUiState.isImportant) - clearing it back to "Not set" reverts to Normal.
+ *
+ * The button's own label animates between "Not set" / "6:00 AM" / "6:00 AM - 8:00 PM": switching
+ * modes inside the dialog shouldn't just snap the input to a new width once it closes.
+ * animateContentSize() eases the button's own resize, while the AnimatedContent around the text
+ * gives the new label a small scale-in "pop" rather than a hard cut - together they read as the
+ * input gently inflating to fit a window instead of jumping.
+ */
+@Composable
+private fun CallTimePicker(startMinutes: Int?, endMinutes: Int?, onConfirm: (start: Int?, end: Int?) -> Unit) {
+    var showPicker by remember { mutableStateOf(false) }
+    val displayLabel = when {
+        startMinutes == null -> "Not set"
+        endMinutes != null -> "${DateMath.formatTimeOfDay(startMinutes)} - ${DateMath.formatTimeOfDay(endMinutes)}"
+        else -> DateMath.formatTimeOfDay(startMinutes)
+    }
+
+    Column(Modifier.fillMaxWidth()) {
         Text("Call time", style = MaterialTheme.typography.titleSmall)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(onClick = { showPicker = true }, modifier = Modifier.padding(top = Spacing.xs)) {
-                Text(preferredTimeMinutes?.let { DateMath.formatTimeOfDay(it) } ?: "Not set")
+        // fillMaxWidth + weight(1f, fill = false) on the button reserves the delete icon's space
+        // first and caps the button to whatever's left, so growing into "6:00 AM - 8:00 PM" can
+        // only expand the button within that bound - never push the icon past the visible edge.
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+        ) {
+            OutlinedButton(
+                onClick = { showPicker = true },
+                contentPadding = COMPACT_BUTTON_PADDING,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .padding(top = Spacing.xs)
+                    .animateContentSize(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
+            ) {
+                AnimatedContent(
+                    targetState = displayLabel,
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + scaleIn(initialScale = 0.85f, animationSpec = tween(220)))
+                            .togetherWith(fadeOut(tween(120)) + scaleOut(targetScale = 0.85f, animationSpec = tween(120)))
+                    },
+                    label = "call-time-label"
+                ) { label -> Text(label, maxLines = 1) }
             }
-            if (preferredTimeMinutes != null) {
-                IconButton(onClick = { onPick(null) }) {
+            if (startMinutes != null) {
+                IconButton(onClick = { onConfirm(null, null) }) {
                     Icon(Icons.Filled.Delete, contentDescription = "Clear call time")
                 }
             }
         }
-        if (isError) {
-            Text(
-                "Set a call time so the important-call reminder knows when to fire",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
     }
 
     if (showPicker) {
-        val initialMinutes = preferredTimeMinutes ?: (9 * 60)
-        val state = rememberTimePickerState(
-            initialHour = initialMinutes / 60,
-            initialMinute = initialMinutes % 60,
-            is24Hour = false
+        CallTimePickerDialog(
+            initialStart = startMinutes,
+            initialEnd = endMinutes,
+            onDismiss = { showPicker = false },
+            onConfirm = { start, end ->
+                onConfirm(start, end)
+                showPicker = false
+            }
         )
-        Dialog(onDismissRequest = { showPicker = false }) {
-            Card {
-                Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    TimePicker(state = state)
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        OutlinedButton(onClick = { showPicker = false }) { Text("Cancel") }
-                        Button(onClick = {
-                            onPick(state.hour * 60 + state.minute)
-                            showPicker = false
-                        }) { Text("OK") }
+    }
+}
+
+/**
+ * One popup covering both modes: the clock sits at top (same spot regardless of mode), a Switch
+ * below it turns "Availability window" on/off, and - since M3 ships only a single-time TimePicker
+ * widget - a From/Until SegmentedControl beneath the switch lets that same clock be reused for both
+ * ends of the window rather than showing two clocks at once. Off stays exactly the plain
+ * single-time picker this replaced.
+ */
+@Composable
+private fun CallTimePickerDialog(
+    initialStart: Int?,
+    initialEnd: Int?,
+    onDismiss: () -> Unit,
+    onConfirm: (start: Int, end: Int?) -> Unit
+) {
+    var isWindow by remember { mutableStateOf(initialStart != null && initialEnd != null) }
+    var activeField by remember { mutableStateOf(TimeField.START) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val startDefault = initialStart ?: (9 * 60)
+    val endDefault = initialEnd ?: (startDefault + 60).coerceAtMost(MAX_MINUTES_OF_DAY)
+    val startState = rememberTimePickerState(initialHour = startDefault / 60, initialMinute = startDefault % 60, is24Hour = false)
+    val endState = rememberTimePickerState(initialHour = endDefault / 60, initialMinute = endDefault % 60, is24Hour = false)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card {
+            Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                // Clock stays first/where it's always been; the window toggle and its From/Until
+                // switcher sit below it instead of above, still ahead of Cancel/OK.
+                val shownField = if (isWindow) activeField else TimeField.START
+                AnimatedContent(
+                    targetState = shownField,
+                    transitionSpec = {
+                        (fadeIn(tween(200)) + scaleIn(initialScale = 0.92f, animationSpec = tween(200)))
+                            .togetherWith(fadeOut(tween(120)))
+                    },
+                    label = "time-field"
+                ) { field ->
+                    TimePicker(state = if (field == TimeField.START) startState else endState)
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    Column {
+                        Text("Availability window", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Set a start and end time",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
                     }
+                    Switch(
+                        checked = isWindow,
+                        onCheckedChange = { checked ->
+                            isWindow = checked
+                            activeField = TimeField.START
+                            error = null
+                        }
+                    )
+                }
+
+                if (isWindow) {
+                    SegmentedControl(
+                        options = listOf(
+                            "From · ${DateMath.formatTimeOfDay(startState.hour * 60 + startState.minute)}",
+                            "Until · ${DateMath.formatTimeOfDay(endState.hour * 60 + endState.minute)}"
+                        ),
+                        selectedIndex = if (activeField == TimeField.START) 0 else 1,
+                        onSelect = { index -> activeField = if (index == 0) TimeField.START else TimeField.END }
+                    )
+                }
+
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    Button(
+                        onClick = {
+                            val start = startState.hour * 60 + startState.minute
+                            if (!isWindow) {
+                                onConfirm(start, null)
+                                return@Button
+                            }
+                            val end = endState.hour * 60 + endState.minute
+                            if (end <= start) {
+                                error = "End time must be after the start time"
+                                return@Button
+                            }
+                            onConfirm(start, end)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("OK") }
                 }
             }
         }
@@ -429,7 +569,11 @@ private fun DueDatePicker(nextDueDate: Long, onPick: (Long) -> Unit) {
 
     Column {
         Text("Next due", style = MaterialTheme.typography.titleSmall)
-        OutlinedButton(onClick = { showPicker = true }, modifier = Modifier.padding(top = Spacing.xs)) {
+        OutlinedButton(
+            onClick = { showPicker = true },
+            contentPadding = COMPACT_BUTTON_PADDING,
+            modifier = Modifier.padding(top = Spacing.xs)
+        ) {
             Text(DateMath.formatDate(nextDueDate))
         }
     }

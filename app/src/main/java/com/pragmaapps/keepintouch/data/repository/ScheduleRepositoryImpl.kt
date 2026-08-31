@@ -10,7 +10,6 @@ import com.pragmaapps.keepintouch.data.db.mapper.toEntity
 import com.pragmaapps.keepintouch.data.logging.AppAnalytics
 import com.pragmaapps.keepintouch.data.reminder.ImportantCallReminderScheduler
 import com.pragmaapps.keepintouch.domain.model.Contact
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
@@ -57,9 +56,9 @@ class ScheduleRepositoryImpl @Inject constructor(
         startDate: Long,
         nextDueDate: Long,
         note: String?,
-        importance: Importance,
         preferredTimeMinutes: Int?,
-        isImportant: Boolean
+        isImportant: Boolean,
+        comfortableTimeEndMinutes: Int?
     ): Long {
         val entity = ScheduleEntity(
             contactLookupKey = contact.lookupKey,
@@ -70,14 +69,14 @@ class ScheduleRepositoryImpl @Inject constructor(
             startDate = startDate,
             nextDueDate = nextDueDate,
             note = note,
-            importance = importance,
             preferredTimeMinutes = preferredTimeMinutes,
-            isImportant = isImportant
+            isImportant = isImportant,
+            comfortableTimeEndMinutes = comfortableTimeEndMinutes
         )
         val id = scheduleDao.insert(entity)
         resolveContactOnlyPendingMatches(contact.id, id)
         reminderScheduler.reschedule(entity.copy(id = id).toDomain())
-        AppAnalytics.logScheduleCreated(recurrence.name, importance.name, isImportant)
+        AppAnalytics.logScheduleCreated(recurrence.name, isImportant)
         return id
     }
 

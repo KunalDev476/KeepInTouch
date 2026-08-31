@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface ScheduleCompletionRepository {
     fun observeAll(): Flow<List<ScheduleCompletion>>
     fun observeForSchedule(scheduleId: Long): Flow<List<ScheduleCompletion>>
+    fun observeForSchedules(scheduleIds: List<Long>): Flow<List<ScheduleCompletion>>
 
     suspend fun record(
         scheduleId: Long,

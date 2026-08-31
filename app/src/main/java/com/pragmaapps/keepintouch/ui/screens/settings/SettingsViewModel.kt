@@ -81,7 +81,6 @@ class SettingsViewModel @Inject constructor(
     fun setMinDurationSeconds(seconds: Int) = detectionPreferences.setMinDurationMs(seconds * 1000L)
     fun setCountIncoming(value: Boolean) = detectionPreferences.setCountIncoming(value)
     fun setCountOutgoing(value: Boolean) = detectionPreferences.setCountOutgoing(value)
-    fun setVideoCallsCount(value: Boolean) = detectionPreferences.setVideoCallsCount(value)
 
     fun exportData(onReady: (String) -> Unit) {
         viewModelScope.launch {

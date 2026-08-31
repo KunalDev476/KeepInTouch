@@ -3,7 +3,6 @@ package com.pragmaapps.keepintouch.data.db.entity
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 
 @Entity(
@@ -22,7 +21,7 @@ data class ScheduleEntity(
     val active: Boolean = true,
     val note: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val importance: Importance = Importance.MEDIUM,
     val preferredTimeMinutes: Int? = null,
-    val isImportant: Boolean = false
+    val isImportant: Boolean = false,
+    val comfortableTimeEndMinutes: Int? = null
 )

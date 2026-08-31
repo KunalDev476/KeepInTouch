@@ -37,6 +37,14 @@ import com.pragmaapps.keepintouch.data.db.entity.ScheduleEntity
  *
  * v4 -> v5: adds digest_reminder_times, backing the collective "N calls pending" reminder. See
  * [com.pragmaapps.keepintouch.data.db.Migrations.MIGRATION_4_5].
+ *
+ * v5 -> v6: drops schedules.importance - priority is now computed live from lateness (see
+ * PriorityEngine.score) instead of a manually-picked Low/Medium/High value. See
+ * [com.pragmaapps.keepintouch.data.db.Migrations.MIGRATION_5_6].
+ *
+ * v6 -> v7: adds schedules.comfortableTimeEndMinutes - an optional window end alongside
+ * preferredTimeMinutes, turning a single "Important" call time into an availability window. See
+ * [com.pragmaapps.keepintouch.data.db.Migrations.MIGRATION_6_7].
  */
 @Database(
     entities = [
@@ -48,7 +56,7 @@ import com.pragmaapps.keepintouch.data.db.entity.ScheduleEntity
         LogEntryEntity::class,
         DigestReminderTimeEntity::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

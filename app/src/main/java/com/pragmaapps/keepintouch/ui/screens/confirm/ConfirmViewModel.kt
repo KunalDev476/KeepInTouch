@@ -45,18 +45,26 @@ class ConfirmViewModel @Inject constructor(
 
     private suspend fun buildDisplay(pending: PendingMatch): PendingMatchDisplay {
         val callEvent = callEventRepository.findById(pending.callEventId)
-        val schedules = if (pending.candidateScheduleIds.isNotEmpty()) scheduleRepository.findByIds(pending.candidateScheduleIds) else emptyList()
+        val rawSchedules = if (pending.candidateScheduleIds.isNotEmpty()) scheduleRepository.findByIds(pending.candidateScheduleIds) else emptyList()
         val contacts = if (pending.candidateContactIds.isNotEmpty()) contactRepository.findByIds(pending.candidateContactIds) else emptyList()
 
         var suggestedScheduleId: Long? = null
-        if (callEvent?.avatarHash != null && schedules.isNotEmpty()) {
-            for (schedule in schedules) {
+        if (callEvent?.avatarHash != null && rawSchedules.isNotEmpty()) {
+            for (schedule in rawSchedules) {
                 val contact = contactRepository.findByLookupKey(schedule.contactLookupKey)
                 if (contact?.learnedAvatarHash != null && contact.learnedAvatarHash == callEvent.avatarHash) {
                     suggestedScheduleId = schedule.id
                     break
                 }
             }
+        }
+
+        // The avatar-suggested candidate (if any) goes first, so the Confirm screen's stepped
+        // Yes/No asks about the most likely match before falling through to the rest.
+        val schedules = if (suggestedScheduleId != null) {
+            rawSchedules.sortedByDescending { it.id == suggestedScheduleId }
+        } else {
+            rawSchedules
         }
 
         return PendingMatchDisplay(pending, callEvent, schedules, contacts, suggestedScheduleId)
@@ -66,7 +74,7 @@ class ConfirmViewModel @Inject constructor(
         viewModelScope.launch { resolvePendingMatch(pendingMatchId, chosenScheduleId) }
     }
 
-    /** Case (b): user declined to create a schedule right now for the recognized contact. */
+    /** User said "no" to every candidate schedule for this ambiguous call. */
     fun dismiss(pendingMatchId: Long) {
         viewModelScope.launch {
             val pending = pendingMatchRepository.findById(pendingMatchId) ?: return@launch

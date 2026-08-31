@@ -41,18 +41,10 @@ class ProcessFinalizedCallUseCase @Inject constructor(
 
         when (outcome) {
             is MatchOutcome.UniqueSchedule -> tryFulfill(event, outcome)
-            is MatchOutcome.ContactWithoutSchedule -> pendingMatchRepository.insert(
-                PendingMatch(
-                    id = 0,
-                    callEventId = event.id,
-                    candidateScheduleIds = emptyList(),
-                    candidateContactIds = outcome.contactIds,
-                    reason = outcome.explanation,
-                    createdAt = System.currentTimeMillis(),
-                    resolvedAt = null,
-                    resolvedScheduleId = null
-                )
-            )
+            // The call matched a synced contact with no active schedule at all - no schedule to
+            // confirm against, so there's nothing to ask the user. Diagnostics/Call Logs can still
+            // explain this outcome (see outcome.explanation); it just never becomes a Confirm prompt.
+            is MatchOutcome.ContactWithoutSchedule -> Unit
             is MatchOutcome.DuplicateSchedules -> insertPending(event, outcome.scheduleIds, outcome.explanation)
             is MatchOutcome.UncertainSchedules -> insertPending(event, outcome.scheduleIds, outcome.explanation)
             MatchOutcome.NoMatch -> Unit // caller not in contacts / no plausible candidate at all

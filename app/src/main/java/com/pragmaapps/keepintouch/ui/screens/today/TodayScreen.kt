@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlin.math.roundToInt
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.ScheduleStatus
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.ui.components.EmptyState
@@ -247,7 +246,7 @@ private fun SwipeBackgroundContent(
 private fun TodayRow(item: TodayItem) {
     ListItem(
         leadingContent = {
-            AnimatedStatusIcon(status = item.status, importance = item.schedule.importance, lateFraction = item.lateFraction)
+            AnimatedStatusIcon(status = item.status, lateFraction = item.lateFraction)
         },
         headlineContent = {
             Text(
@@ -274,7 +273,7 @@ private fun TodayRow(item: TodayItem) {
  *  used on Contact Detail, not a separate plain checked/unchecked mark. Keeps the same
  *  spring-driven overshoot on a status change that the old check-off icon had. */
 @Composable
-private fun AnimatedStatusIcon(status: ScheduleStatus, importance: Importance, lateFraction: Float) {
+private fun AnimatedStatusIcon(status: ScheduleStatus, lateFraction: Float) {
     val scale = remember { Animatable(1f) }
     LaunchedEffect(status) {
         if (status == ScheduleStatus.DONE) {
@@ -286,6 +285,6 @@ private fun AnimatedStatusIcon(status: ScheduleStatus, importance: Importance, l
         }
     }
     Box(Modifier.size(40.dp).scale(scale.value), contentAlignment = Alignment.Center) {
-        ScheduleStatusIcon(status = status, importance = importance, lateFraction = lateFraction, modifier = Modifier.size(28.dp))
+        ScheduleStatusIcon(status = status, lateFraction = lateFraction, modifier = Modifier.size(28.dp))
     }
 }

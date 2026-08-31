@@ -1,7 +1,6 @@
 package com.pragmaapps.keepintouch.fakes
 
 import com.pragmaapps.keepintouch.domain.model.Contact
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
@@ -35,9 +34,9 @@ class FakeScheduleRepository(initial: List<Schedule> = emptyList()) : ScheduleRe
         startDate: Long,
         nextDueDate: Long,
         note: String?,
-        importance: Importance,
         preferredTimeMinutes: Int?,
-        isImportant: Boolean
+        isImportant: Boolean,
+        comfortableTimeEndMinutes: Int?
     ): Long {
         val id = (state.value.maxOfOrNull { it.id } ?: 0) + 1
         state.value = state.value + Schedule(
@@ -52,9 +51,9 @@ class FakeScheduleRepository(initial: List<Schedule> = emptyList()) : ScheduleRe
             active = true,
             note = note,
             createdAt = 0,
-            importance = importance,
             preferredTimeMinutes = preferredTimeMinutes,
-            isImportant = isImportant
+            isImportant = isImportant,
+            comfortableTimeEndMinutes = comfortableTimeEndMinutes
         )
         return id
     }

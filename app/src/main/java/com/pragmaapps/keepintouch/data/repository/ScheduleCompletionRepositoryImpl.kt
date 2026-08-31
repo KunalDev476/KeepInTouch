@@ -7,6 +7,7 @@ import com.pragmaapps.keepintouch.domain.model.MatchConfidence
 import com.pragmaapps.keepintouch.domain.model.ScheduleCompletion
 import com.pragmaapps.keepintouch.domain.repository.ScheduleCompletionRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +21,10 @@ class ScheduleCompletionRepositoryImpl @Inject constructor(
 
     override fun observeForSchedule(scheduleId: Long): Flow<List<ScheduleCompletion>> =
         dao.observeForSchedule(scheduleId).map { list -> list.map { it.toDomain() } }
+
+    override fun observeForSchedules(scheduleIds: List<Long>): Flow<List<ScheduleCompletion>> =
+        if (scheduleIds.isEmpty()) flowOf(emptyList()) else
+            dao.observeForSchedules(scheduleIds).map { list -> list.map { it.toDomain() } }
 
     override suspend fun record(
         scheduleId: Long,

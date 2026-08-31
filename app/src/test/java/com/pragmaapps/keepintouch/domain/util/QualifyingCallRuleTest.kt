@@ -77,15 +77,9 @@ class QualifyingCallRuleTest {
     }
 
     @Test
-    fun `video calls qualify by default`() {
-        assertTrue(QualifyingCallRule.isQualified(signals(isVideo = true)))
-    }
-
-    @Test
-    fun `video calls excluded when videoCallsCount is false`() {
-        val settings = DetectionSettings(videoCallsCount = false)
-        assertFalse(QualifyingCallRule.isQualified(signals(isVideo = true), settings))
-        assertTrue(QualifyingCallRule.isQualified(signals(isVideo = false), settings))
+    fun `video calls never qualify`() {
+        assertFalse(QualifyingCallRule.isQualified(signals(isVideo = true)))
+        assertTrue(QualifyingCallRule.isQualified(signals(isVideo = false)))
     }
 
     @Test

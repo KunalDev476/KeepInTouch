@@ -21,9 +21,19 @@ data class Schedule(
     val active: Boolean,
     val note: String?,
     val createdAt: Long,
-    val importance: Importance = Importance.MEDIUM,
     /** Minutes since midnight the call is expected at, e.g. 10:00am = 600. Null = no specific time. */
     val preferredTimeMinutes: Int? = null,
-    /** "Must not be missed" - drives a reminder notification 30 minutes before [preferredTimeMinutes]. */
-    val isImportant: Boolean = false
+    /**
+     * "Must not be missed" - drives a reminder notification 10 minutes before [preferredTimeMinutes]
+     * (or before the window start, if [comfortableTimeEndMinutes] is also set). Derived automatically
+     * from whether a call time is set (never user-toggled directly) - see ScheduleSheetViewModel.save().
+     */
+    val isImportant: Boolean = false,
+    /**
+     * Minutes since midnight the contact is comfortably reachable *until*, e.g. 11:00am = 660. Only
+     * meaningful alongside [preferredTimeMinutes] (the window start) - null means this schedule has
+     * a single call time rather than an availability window. When set, the reminder message changes
+     * from "must not be missed" to "this is a good time to call" - see ImportantCallReminderReceiver.
+     */
+    val comfortableTimeEndMinutes: Int? = null
 )

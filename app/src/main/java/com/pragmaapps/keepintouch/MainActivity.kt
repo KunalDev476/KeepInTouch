@@ -4,12 +4,19 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -20,6 +27,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -193,8 +203,7 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
                 popExitTransition = { Transitions.popExit() }
             ) {
                 ConfirmScreen(
-                    onBack = { navController.popBackStack() },
-                    onCreateScheduleForContact = { lookupKey -> scheduleSheetArgs = ScheduleSheetArgs.ForNewContact(lookupKey) }
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable(
@@ -232,25 +241,62 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
     }
 }
 
+/**
+ * Filled/outlined icon pairing (see [Destination]) plus a small selected-state scale pop makes the
+ * active tab unambiguous without leaning on color alone; a top divider gives the bar a crisp edge
+ * against scrollable content instead of relying purely on tonal elevation to read as "above" it.
+ */
 @Composable
 private fun AppBottomBar(navController: NavHostController) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    NavigationBar {
-        Destination.bottomBarDestinations.forEach { destination ->
-            NavigationBarItem(
-                selected = currentRoute == destination.route,
-                onClick = {
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                icon = { Icon(destination.icon, contentDescription = destination.label) },
-                label = { Text(destination.label) }
-            )
+    Column {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp
+        ) {
+            Destination.bottomBarDestinations.forEach { destination ->
+                val selected = currentRoute == destination.route
+                val iconScale by animateFloatAsState(
+                    targetValue = if (selected) 1f else 0.9f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                    label = "bottomNavIconScale"
+                )
+
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = {
+                        navController.navigate(destination.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    icon = {
+                        Icon(
+                            if (selected) destination.selectedIcon else destination.unselectedIcon,
+                            contentDescription = destination.label,
+                            modifier = Modifier.scale(iconScale)
+                        )
+                    },
+                    label = {
+                        Text(
+                            destination.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                        indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+            }
         }
     }
 }

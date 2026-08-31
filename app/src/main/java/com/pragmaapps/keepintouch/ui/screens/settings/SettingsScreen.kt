@@ -26,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,16 +37,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -59,8 +53,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.pragmaapps.keepintouch.ui.components.PermissionStatusCard
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import com.pragmaapps.keepintouch.ui.theme.extendedColors
-import java.io.OutputStreamWriter
-import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -72,7 +64,6 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -89,22 +80,6 @@ fun SettingsScreen(
     val callLogPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { viewModel.refreshPermissionState() }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            viewModel.exportData { json ->
-                scope.launch {
-                    context.contentResolver.openOutputStream(uri)?.use { stream ->
-                        OutputStreamWriter(stream).use { it.write(json) }
-                    }
-                }
-            }
-        }
-    }
-
-    var showClearConfirm by remember { mutableStateOf(false) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         LazyColumn(
@@ -181,14 +156,6 @@ fun SettingsScreen(
                 }
             }
 
-            item { SectionHeader("Data") }
-            item {
-                Row(Modifier.fillMaxWidth().padding(bottom = Spacing.lg), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedButton(onClick = { exportLauncher.launch("keep_in_touch_export.json") }) { Text("Export data") }
-                    OutlinedButton(onClick = { showClearConfirm = true }) { Text("Clear all data") }
-                }
-            }
-
             item { SectionHeader("Diagnostics") }
             item {
                 Card(
@@ -227,21 +194,6 @@ fun SettingsScreen(
             }
             item { Spacer(Modifier.height(Spacing.xxl)) }
         }
-    }
-
-    if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear all data?") },
-            text = { Text("This deletes every contact sync, schedule, and call record. This can't be undone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.clearAllData {}
-                    showClearConfirm = false
-                }) { Text("Clear everything") }
-            },
-            dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") } }
-        )
     }
 }
 
@@ -339,7 +291,6 @@ private fun DetectionSection(uiState: SettingsUiState, viewModel: SettingsViewMo
             )
             ToggleRow("Count incoming calls", settings.countIncoming, viewModel::setCountIncoming)
             ToggleRow("Count outgoing calls", settings.countOutgoing, viewModel::setCountOutgoing)
-            ToggleRow("Video calls count the same as voice", settings.videoCallsCount, viewModel::setVideoCallsCount)
         }
     }
 }

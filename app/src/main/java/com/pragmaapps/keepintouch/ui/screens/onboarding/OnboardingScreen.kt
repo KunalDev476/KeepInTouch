@@ -99,7 +99,9 @@ fun OnboardingScreen(
                 1 -> PermissionPage(
                     icon = Icons.Filled.Contacts,
                     title = "Find who has WhatsApp",
-                    why = "We read your contacts, read-only, to see who's saved and who has WhatsApp linked.",
+                    why = "We read your contacts, read-only, to see who's saved and who has WhatsApp linked. " +
+                        "Contact names and numbers are only ever used inside this app, to match them to your " +
+                        "schedules - nothing is sent off your device.",
                     granted = uiState.contactsGranted,
                     ctaLabel = "Grant Contacts access",
                     onCta = { contactsLauncher.launch(Manifest.permission.READ_CONTACTS) }
@@ -107,7 +109,14 @@ fun OnboardingScreen(
                 2 -> PermissionPage(
                     icon = Icons.Filled.Notifications,
                     title = "Detect WhatsApp calls",
-                    why = "Android requires notification access to let an app see WhatsApp's call notifications - granted from Settings, not a normal prompt.",
+                    why = "Android requires notification access to let an app see WhatsApp's call notifications - " +
+                        "granted from Settings, not a normal prompt. We only ever look at notifications from " +
+                        "WhatsApp and WhatsApp Business; every other app's notifications are ignored immediately, " +
+                        "unread. From a WhatsApp notification we only read the caller's name and whether the call " +
+                        "is ringing, ongoing, or ended - never message text or chat content. That's used only to " +
+                        "mark a call as complete on a schedule you created; nothing is sent off your device, and " +
+                        "nothing is shared with us, WhatsApp, or anyone else. You can revoke this any time from " +
+                        "Settings > Apps > Special app access > Notification access.",
                     granted = uiState.notificationListenerGranted,
                     ctaLabel = "Open Settings",
                     onCta = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
@@ -117,7 +126,7 @@ fun OnboardingScreen(
                     title = "Detect regular phone calls",
                     why = "For calls that aren't on WhatsApp, we read the call log - just type (incoming/outgoing), " +
                         "duration, and the number - right after a call ends, so it works even if you never leave the call screen. " +
-                        "Nothing is read except call records.",
+                        "Nothing is read except call records, and nothing ever leaves your device.",
                     granted = uiState.callLogGranted,
                     ctaLabel = "Grant call log access",
                     onCta = { callLogLauncher.launch(Manifest.permission.READ_CALL_LOG) }
@@ -125,7 +134,9 @@ fun OnboardingScreen(
                 4 -> PermissionPage(
                     icon = Icons.Filled.NotificationsActive,
                     title = "Show you reminders",
-                    why = "Needed to actually display reminder notifications - the important-call warning and the daily pending-calls summary.",
+                    why = "Needed to actually display reminder notifications - the important-call warning and the " +
+                        "daily pending-calls summary. These are notifications this app creates and shows only to " +
+                        "you; nothing is read from any other app here.",
                     granted = uiState.postNotificationsGranted,
                     ctaLabel = "Allow notifications",
                     onCta = { postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
@@ -133,7 +144,9 @@ fun OnboardingScreen(
                 else -> PermissionPage(
                     icon = Icons.Filled.Alarm,
                     title = "Fire reminders exactly on time",
-                    why = "Lets an important call's 30-minutes-before warning fire at the exact moment, even in Doze - granted from Settings, not a normal prompt.",
+                    why = "Lets an important call's 30-minutes-before warning fire at the exact moment, even in " +
+                        "Doze - granted from Settings, not a normal prompt. Only used to schedule this app's own " +
+                        "reminders; it doesn't give access to anything else on your device.",
                     granted = uiState.exactAlarmGranted,
                     ctaLabel = "Open Settings",
                     onCta = {

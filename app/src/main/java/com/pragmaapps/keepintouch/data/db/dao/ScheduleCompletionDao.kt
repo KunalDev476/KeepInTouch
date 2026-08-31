@@ -14,6 +14,9 @@ interface ScheduleCompletionDao {
     @Query("SELECT * FROM schedule_completions WHERE scheduleId = :scheduleId ORDER BY completedAt DESC")
     fun observeForSchedule(scheduleId: Long): Flow<List<ScheduleCompletionEntity>>
 
+    @Query("SELECT * FROM schedule_completions WHERE scheduleId IN (:scheduleIds) ORDER BY completedAt DESC")
+    fun observeForSchedules(scheduleIds: List<Long>): Flow<List<ScheduleCompletionEntity>>
+
     @Query("SELECT * FROM schedule_completions WHERE scheduleId = :scheduleId ORDER BY completedAt DESC")
     suspend fun getForScheduleSnapshot(scheduleId: Long): List<ScheduleCompletionEntity>
 

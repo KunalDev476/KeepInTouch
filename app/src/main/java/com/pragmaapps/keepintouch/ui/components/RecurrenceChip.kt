@@ -18,19 +18,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.pragmaapps.keepintouch.domain.model.Importance
 import com.pragmaapps.keepintouch.domain.model.Recurrence
+import kotlin.math.roundToInt
 
 fun Recurrence.label(): String = when (this) {
     Recurrence.ONE_TIME -> "One time"
     Recurrence.DAILY -> "Daily"
     Recurrence.WEEKLY -> "Weekly"
-}
-
-fun Importance.label(): String = when (this) {
-    Importance.LOW -> "Low"
-    Importance.MEDIUM -> "Medium"
-    Importance.HIGH -> "High"
 }
 
 /** A quiet, purely informational badge - not an interactive control, so it never renders "disabled." */
@@ -66,12 +60,20 @@ fun RecurrenceChip(recurrence: Recurrence, modifier: Modifier = Modifier) {
     }
 }
 
-/** Same quiet badge treatment as [RecurrenceChip], for a schedule's Low/Medium/High priority. */
+/**
+ * Same quiet badge treatment as [RecurrenceChip], for a schedule's automatic priority - the live
+ * delay percentage from PriorityEngine.score (1 full cadence overdue = 100%), not a manually-set
+ * value. Uses the neutral secondaryContainer treatment when on time and the error container once
+ * there's an actual delay to flag, so it reads as informational rather than alarming by default.
+ */
 @Composable
-fun ImportanceChip(importance: Importance, modifier: Modifier = Modifier) {
+fun PriorityChip(delayPercent: Double, modifier: Modifier = Modifier) {
+    val isDelayed = delayPercent > 0
+    val containerColor = if (isDelayed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+    val contentColor = if (isDelayed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = containerColor,
         shape = RoundedCornerShape(999.dp)
     ) {
         Row(
@@ -83,12 +85,12 @@ fun ImportanceChip(importance: Importance, modifier: Modifier = Modifier) {
                 Icons.Filled.Flag,
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                tint = contentColor
             )
             Text(
-                importance.label(),
+                if (isDelayed) "${delayPercent.roundToInt()}% delayed" else "On time",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
+                color = contentColor
             )
         }
     }

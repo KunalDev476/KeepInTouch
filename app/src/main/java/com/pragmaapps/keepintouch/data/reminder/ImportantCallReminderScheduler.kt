@@ -15,12 +15,17 @@ import javax.inject.Singleton
 private const val TAG = "ReminderScheduler"
 
 /**
- * Arms/cancels the exact alarm behind a schedule's "must not be missed" reminder, fired 30 minutes
- * before its due time. Uses AlarmManager.setExactAndAllowWhileIdle rather than WorkManager: this
+ * Arms/cancels the exact alarm behind a schedule's "must not be missed" reminder (or, when
+ * [Schedule.comfortableTimeEndMinutes] is also set, its "good time to call" availability-window
+ * reminder), fired 10 minutes before its due time / window start. Uses
+ * AlarmManager.setExactAndAllowWhileIdle rather than WorkManager: this
  * needs to fire at a specific wall-clock moment even through Doze, which WorkManager doesn't
  * guarantee. Requires SCHEDULE_EXACT_ALARM (Android 12+); if it's not granted, the reminder is
  * simply not armed - never crashes, never silently retries with inexact timing that would defeat
- * the point of a 30-minutes-before warning.
+ * the point of a 10-minutes-before warning.
+ *
+ * Each schedule only ever arms its OWN alarm here; ImportantCallReminderReceiver is what merges
+ * multiple still-outstanding schedules into a single notification when one of these fires.
  */
 @Singleton
 class ImportantCallReminderScheduler @Inject constructor(
@@ -57,7 +62,7 @@ class ImportantCallReminderScheduler @Inject constructor(
                 TAG,
                 "Reminder for scheduleId=${schedule.id} (${schedule.displayNameSnapshot}) would fire in the past " +
                     "(due ${DateMath.formatDate(dueInstant)}, computed fireAt=$fireAt <= now=${System.currentTimeMillis()}) - not armed. " +
-                    "Likely cause: due date/time is today but already less than 30 minutes away, or in the past.",
+                    "Likely cause: due date/time is today but already less than 10 minutes away, or in the past.",
                 crashlyticsMessage = "Reminder for scheduleId=${schedule.id} would fire in the past " +
                     "(due ${DateMath.formatDate(dueInstant)}, computed fireAt=$fireAt <= now=${System.currentTimeMillis()}) - not armed."
             )
@@ -75,11 +80,11 @@ class ImportantCallReminderScheduler @Inject constructor(
             return
         }
 
+        // No per-schedule payload needed beyond the action - ImportantCallReminderReceiver reads
+        // live from the DB on every firing (it needs to merge in whatever else is currently
+        // pending, not just this one schedule), so nothing here would ever be read back.
         val intent = Intent(context, ImportantCallReminderReceiver::class.java).apply {
             action = ACTION_REMIND
-            putExtra(EXTRA_SCHEDULE_ID, schedule.id)
-            putExtra(EXTRA_CONTACT_NAME, schedule.displayNameSnapshot)
-            putExtra(EXTRA_DUE_INSTANT, dueInstant)
         }
         try {
             manager.setExactAndAllowWhileIdle(
@@ -95,9 +100,9 @@ class ImportantCallReminderScheduler @Inject constructor(
             AppLogger.i(
                 TAG,
                 "Armed reminder for scheduleId=${schedule.id} (${schedule.displayNameSnapshot}): fires at $fireAt, " +
-                    "30 minutes before due ${DateMath.formatDate(dueInstant)}",
+                    "10 minutes before due ${DateMath.formatDate(dueInstant)}",
                 crashlyticsMessage = "Armed reminder for scheduleId=${schedule.id}: fires at $fireAt, " +
-                    "30 minutes before due ${DateMath.formatDate(dueInstant)}"
+                    "10 minutes before due ${DateMath.formatDate(dueInstant)}"
             )
         } catch (t: SecurityException) {
             // canScheduleExactAlarms() said yes above, yet the call still threw - a genuinely
@@ -117,10 +122,7 @@ class ImportantCallReminderScheduler @Inject constructor(
     private fun alarmManager(): AlarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
     companion object {
-        const val REMINDER_LEAD_MS = 30 * 60 * 1000L
+        const val REMINDER_LEAD_MS = 10 * 60 * 1000L
         const val ACTION_REMIND = "com.pragmaapps.keepintouch.action.IMPORTANT_CALL_REMINDER"
-        const val EXTRA_SCHEDULE_ID = "extra_schedule_id"
-        const val EXTRA_CONTACT_NAME = "extra_contact_name"
-        const val EXTRA_DUE_INSTANT = "extra_due_instant"
     }
 }

@@ -11,8 +11,7 @@ import com.pragmaapps.keepintouch.domain.model.Direction
 data class DetectionSettings(
     val minDurationMs: Long = QualifyingCallRule.DEFAULT_MIN_DURATION_MS,
     val countIncoming: Boolean = true,
-    val countOutgoing: Boolean = true,
-    val videoCallsCount: Boolean = true
+    val countOutgoing: Boolean = true
 )
 
 /**
@@ -34,7 +33,7 @@ object QualifyingCallRule {
         signals.connected &&
             directionAllowed(signals.direction, settings) &&
             !signals.isGroupCall &&
-            (settings.videoCallsCount || !signals.isVideo) &&
+            !signals.isVideo &&
             signals.inferredDurationMs != null &&
             signals.inferredDurationMs >= settings.minDurationMs
 
@@ -46,7 +45,7 @@ object QualifyingCallRule {
         if (signals.direction == Direction.INCOMING && !settings.countIncoming) reasons += "Incoming calls are excluded in Settings."
         if (signals.direction == Direction.OUTGOING && !settings.countOutgoing) reasons += "Outgoing calls are excluded in Settings."
         if (signals.isGroupCall) reasons += "Flagged as a group call - cannot fulfill a 1:1 schedule."
-        if (signals.isVideo && !settings.videoCallsCount) reasons += "Video calls are excluded in Settings."
+        if (signals.isVideo) reasons += "Video calls are excluded - only voice calls fulfill a schedule."
         when (val duration = signals.inferredDurationMs) {
             null -> reasons += "No duration basis available (never observed an ONGOING timestamp)."
             else -> if (duration < settings.minDurationMs) {

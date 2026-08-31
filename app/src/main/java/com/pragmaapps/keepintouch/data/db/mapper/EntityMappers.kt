@@ -53,9 +53,9 @@ fun ScheduleEntity.toDomain() = Schedule(
     active = active,
     note = note,
     createdAt = createdAt,
-    importance = importance,
     preferredTimeMinutes = preferredTimeMinutes,
-    isImportant = isImportant
+    isImportant = isImportant,
+    comfortableTimeEndMinutes = comfortableTimeEndMinutes
 )
 
 fun Schedule.toEntity() = ScheduleEntity(
@@ -70,9 +70,9 @@ fun Schedule.toEntity() = ScheduleEntity(
     active = active,
     note = note,
     createdAt = createdAt,
-    importance = importance,
     preferredTimeMinutes = preferredTimeMinutes,
-    isImportant = isImportant
+    isImportant = isImportant,
+    comfortableTimeEndMinutes = comfortableTimeEndMinutes
 )
 
 fun ScheduleCompletionEntity.toDomain() = ScheduleCompletion(

@@ -21,10 +21,9 @@ object AppAnalytics {
         analytics = FirebaseAnalytics.getInstance(context.applicationContext)
     }
 
-    fun logScheduleCreated(recurrence: String, importance: String, isImportant: Boolean) {
+    fun logScheduleCreated(recurrence: String, isImportant: Boolean) {
         log("schedule_created") {
             putString("recurrence", recurrence)
-            putString("importance", importance)
             putBoolean("is_important", isImportant)
         }
     }
