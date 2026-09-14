@@ -6,18 +6,27 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PhoneDisabled
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,6 +34,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -32,18 +42,25 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.pragmaapps.keepintouch.domain.util.DateMath
+import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.components.AvatarWithWhatsAppBadge
 import com.pragmaapps.keepintouch.ui.components.EmptyState
 import com.pragmaapps.keepintouch.ui.components.LoadingSkeleton
 import com.pragmaapps.keepintouch.ui.components.SegmentedControl
+import com.pragmaapps.keepintouch.ui.components.label
 import com.pragmaapps.keepintouch.ui.theme.Spacing
+import com.pragmaapps.keepintouch.ui.theme.extendedColors
 
 @Composable
 fun PeopleScreen(
@@ -76,21 +93,42 @@ fun PeopleScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("People") }) }) { padding ->
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Your Contacts") }) },
+        floatingActionButton = {
+            // Only once there's something to browse in Call Schedules - with zero schedules, the
+            // segment's own EmptyState already tells you to switch to All contacts and tap +.
+            if (uiState.segment == PeopleSegment.SCHEDULED && uiState.scheduledRows.isNotEmpty()) {
+                FloatingActionButton(onClick = { viewModel.onSegmentChange(PeopleSegment.ALL) }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add someone to call")
+                }
+            }
+        }
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (!uiState.contactsPermissionGranted) {
                 ContactsPermissionPrompt(
-                    onGrant = { permissionLauncher.launch(Manifest.permission.READ_CONTACTS) }
+                    onGrant = {
+                        ForegroundResetGate.suppressNext()
+                        permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                    }
                 )
                 return@Scaffold
             }
 
+            Text(
+                "Choose who you want to stay in touch with and set how often you want to call them",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(start = Spacing.lg, end = Spacing.lg, top = 0.dp, bottom = Spacing.sm)
+            )
+
             Column(Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm)) {
                 SegmentedControl(
-                    options = listOf("Scheduled", "All contacts"),
-                    selectedIndex = if (uiState.segment == PeopleSegment.SCHEDULED) 0 else 1,
+                    options = listOf("All contacts", "Call Schedules"),
+                    selectedIndex = if (uiState.segment == PeopleSegment.ALL) 0 else 1,
                     onSelect = { index ->
-                        viewModel.onSegmentChange(if (index == 0) PeopleSegment.SCHEDULED else PeopleSegment.ALL)
+                        viewModel.onSegmentChange(if (index == 0) PeopleSegment.ALL else PeopleSegment.SCHEDULED)
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -100,18 +138,36 @@ fun PeopleScreen(
                 value = uiState.query,
                 onValueChange = viewModel::onQueryChange,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-                placeholder = { Text("Search contacts") },
+                placeholder = { Text("Search people by name or number") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true
             )
+
+            val scheduledListState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val allContactsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+            // Typing, or backspacing, a new query while scrolled down should snap back to the top
+            // so the best/first match is immediately visible instead of wherever the list happened
+            // to be scrolled to before.
+            LaunchedEffect(uiState.query, uiState.segment) {
+                when (uiState.segment) {
+                    PeopleSegment.SCHEDULED -> if (scheduledListState.firstVisibleItemIndex != 0) scheduledListState.scrollToItem(0)
+                    PeopleSegment.ALL -> if (allContactsListState.firstVisibleItemIndex != 0) allContactsListState.scrollToItem(0)
+                }
+            }
 
             if (uiState.isLoading) {
                 LoadingSkeleton()
             } else {
                 when (uiState.segment) {
-                    PeopleSegment.SCHEDULED -> ScheduledList(uiState.scheduledRows, onRowClick = { onOpenContact(it.schedule.contactLookupKey) })
+                    PeopleSegment.SCHEDULED -> ScheduledList(
+                        uiState.scheduledRows,
+                        listState = scheduledListState,
+                        onRowClick = { onOpenContact(it.schedule.contactLookupKey) }
+                    )
                     PeopleSegment.ALL -> AllContactsList(
                         uiState.allContactRows,
+                        listState = allContactsListState,
                         onScheduleContact = onScheduleContact,
                         onOpenContact = onOpenContact
                     )
@@ -134,7 +190,11 @@ private fun ContactsPermissionPrompt(onGrant: () -> Unit) {
 }
 
 @Composable
-private fun ScheduledList(rows: List<ScheduledPersonRow>, onRowClick: (ScheduledPersonRow) -> Unit) {
+private fun ScheduledList(
+    rows: List<ScheduledPersonRow>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    onRowClick: (ScheduledPersonRow) -> Unit
+) {
     if (rows.isEmpty()) {
         EmptyState(
             icon = Icons.Filled.People,
@@ -144,7 +204,7 @@ private fun ScheduledList(rows: List<ScheduledPersonRow>, onRowClick: (Scheduled
         )
         return
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = Spacing.xxl)) {
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = Spacing.xxl)) {
         items(rows, key = { it.schedule.id }) { row ->
             Column(Modifier.animateItem()) {
                 ListItem(
@@ -155,8 +215,37 @@ private fun ScheduledList(rows: List<ScheduledPersonRow>, onRowClick: (Scheduled
                             hasWhatsApp = row.contact?.hasWhatsApp ?: false
                         )
                     },
-                    headlineContent = { Text(row.schedule.displayNameSnapshot) },
-                    supportingContent = { Text("Next due ${DateMath.formatDate(row.schedule.nextDueDate)}") }
+                    headlineContent = {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                row.schedule.displayNameSnapshot,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(Spacing.sm))
+                            ScheduleStateChip(row = row)
+                        }
+                    },
+                    supportingContent = {
+                        val callsText = callsStatText(row.callStatCount, row.callStatMonthName, row.callStatIsCurrentMonth)
+                        val fullText = if (row.completed || !row.schedule.active) {
+                            callsText
+                        } else {
+                            "$callsText · Next ${DateMath.formatDateShort(row.schedule.nextDueDate)}"
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            Icon(
+                                if (row.callStatCount == 0) Icons.Filled.PhoneDisabled else Icons.Filled.Call,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(fullText)
+                        }
+                    }
                 )
                 HorizontalDivider()
             }
@@ -164,9 +253,42 @@ private fun ScheduledList(rows: List<ScheduledPersonRow>, onRowClick: (Scheduled
     }
 }
 
+/** "3 calls this month" while [monthName] is the current month, else "3 calls in {month}" naming the past month it happened in. */
+private fun callsStatText(count: Int, monthName: String?, isCurrentMonth: Boolean): String {
+    if (monthName == null) return "No calls yet"
+    val monthLabel = if (isCurrentMonth) "this month" else "in ${monthName.take(3)}"
+    return when (count) {
+        0 -> "No calls $monthLabel"
+        1 -> "1 call $monthLabel"
+        else -> "$count calls $monthLabel"
+    }
+}
+
+@Composable
+private fun ScheduleStateChip(row: ScheduledPersonRow, modifier: Modifier = Modifier) {
+    val (label, color) = when {
+        row.completed -> "Completed" to MaterialTheme.extendedColors.successGreen
+        row.schedule.active -> "Active" to MaterialTheme.extendedColors.successGreen
+        else -> "Paused" to MaterialTheme.colorScheme.error
+    }
+    Surface(
+        modifier = modifier,
+        color = color.copy(alpha = 0.15f),
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+}
+
 @Composable
 private fun AllContactsList(
     rows: List<AllContactRow>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
     onScheduleContact: (String) -> Unit,
     onOpenContact: (String) -> Unit
 ) {
@@ -179,7 +301,7 @@ private fun AllContactsList(
         )
         return
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = Spacing.xxl)) {
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = Spacing.xxl)) {
         items(rows, key = { it.contact.lookupKey }) { row ->
             Column(Modifier.animateItem()) {
                 AllContactRowItem(row, onScheduleContact, onOpenContact)
@@ -216,7 +338,7 @@ private fun AllContactRowItem(
         },
         supportingContent = {
             Text(
-                if (dimmed) "Can't auto-detect - no WhatsApp found" else row.schedule?.let { "Scheduled - ${it.recurrence.name.lowercase()}" } ?: "Not scheduled",
+                if (dimmed) "WhatsApp calls can't be tracked for this contact" else row.schedule?.let { "Scheduled - ${it.recurrence.label()}" } ?: "Add to call Schedule",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },

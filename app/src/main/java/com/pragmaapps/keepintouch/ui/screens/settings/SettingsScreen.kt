@@ -51,6 +51,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.pragmaapps.keepintouch.ui.components.PermissionStatusCard
+import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import com.pragmaapps.keepintouch.ui.theme.extendedColors
 
@@ -84,15 +85,26 @@ fun SettingsScreen(
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(Spacing.lg)
+            contentPadding = PaddingValues(start = Spacing.lg, end = Spacing.lg, top = 0.dp, bottom = Spacing.lg)
         ) {
+            item {
+                Text(
+                    "Change Call Detection settings and choose when you get reminders",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Spacing.md)
+                )
+            }
             item { SectionHeader("Permissions") }
             item {
                 ContactsPermissionCard(
                     granted = uiState.contactsPermissionGranted,
                     syncedCount = uiState.syncedContactCount,
                     whatsappCount = uiState.whatsappContactCount,
-                    onGrant = { contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+                    onGrant = {
+                        ForegroundResetGate.suppressNext()
+                        contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                    },
                     onResync = { viewModel.resyncContacts() },
                     modifier = Modifier.padding(bottom = Spacing.sm)
                 )
@@ -107,7 +119,10 @@ fun SettingsScreen(
                         "Required to detect WhatsApp calls. Android requires this to be granted from Settings, not a normal prompt."
                     },
                     actionLabel = "Open Settings",
-                    onAction = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+                    onAction = {
+                        ForegroundResetGate.suppressNext()
+                        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                    },
                     modifier = Modifier.padding(bottom = Spacing.sm)
                 )
             }
@@ -125,7 +140,10 @@ fun SettingsScreen(
                             "schedules fulfilled only by a WhatsApp call, never a normal call."
                     },
                     actionLabel = "Grant call log access",
-                    onAction = { callLogPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG) },
+                    onAction = {
+                        ForegroundResetGate.suppressNext()
+                        callLogPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
+                    },
                     modifier = Modifier.padding(bottom = Spacing.lg)
                 )
             }

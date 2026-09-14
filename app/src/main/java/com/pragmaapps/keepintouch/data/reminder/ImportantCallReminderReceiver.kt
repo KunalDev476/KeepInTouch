@@ -1,6 +1,7 @@
 package com.pragmaapps.keepintouch.data.reminder
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -8,6 +9,7 @@ import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.pragmaapps.keepintouch.MainActivity
 import com.pragmaapps.keepintouch.data.logging.AppLogger
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
@@ -96,6 +98,15 @@ class ImportantCallReminderReceiver : BroadcastReceiver() {
             "Calls coming up" to due.joinToString(", ") { schedule -> schedule.displayNameSnapshot + timeSuffix(schedule) }
         }
 
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(context, ReminderNotifications.CHANNEL_ID_IMPORTANT)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle(title)
@@ -103,6 +114,7 @@ class ImportantCallReminderReceiver : BroadcastReceiver() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(contentIntent)
             .setAutoCancel(true)
             .build()
 

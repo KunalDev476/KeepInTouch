@@ -209,7 +209,7 @@ private fun ValuePropPage() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("KeepInTouch", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+        Text("In Touch", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         Text(
             "Schedule the people you want to stay close to. We'll quietly check them off when a real WhatsApp call happens - no logging it yourself.",
             style = MaterialTheme.typography.bodyLarge,

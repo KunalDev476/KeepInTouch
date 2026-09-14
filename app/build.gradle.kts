@@ -19,8 +19,8 @@ android {
         applicationId = "com.pragmaapps.keepintouch"
         minSdk = 34
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 6
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -85,6 +85,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    // ProcessLifecycleOwner - tracks whether the whole app (not just this Activity) is in the
+    // foreground, so a same-process interruption (a permission dialog, a config change) never
+    // reads as "backgrounded" the way Activity.onStop alone can - see ForegroundResetGate.
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.coroutines.android)
 

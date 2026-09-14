@@ -50,6 +50,7 @@ import com.pragmaapps.keepintouch.domain.model.DigestReminderTime
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.ui.components.EmptyState
 import com.pragmaapps.keepintouch.ui.components.LoadingSkeleton
+import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 
 @Composable
@@ -64,6 +65,13 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
     val postNotificationsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> postNotificationsGranted = granted }
+
+    fun requestNotificationPermissionIfNeeded() {
+        if (!notificationsGranted()) {
+            ForegroundResetGate.suppressNext()
+            postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -84,9 +92,8 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Text(
-                "Set reminders for when you want to be told about calls you still need to make. " +
-                    "Each one covers everything pending at that moment, normal and important together. " +
-                    "Important calls also get their own separate reminder 10 minutes before the call time (or availability window) you set for them.",
+                "Pick times to get reminded about calls you still need to make. Calls marked Important " +
+                    "also send an extra reminder 10 minutes before their call time.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(Spacing.lg)
@@ -108,9 +115,7 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodySmall
                         )
-                        OutlinedButton(onClick = {
-                            if (!notificationsGranted()) postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }) { Text("Grant") }
+                        OutlinedButton(onClick = ::requestNotificationPermissionIfNeeded) { Text("Grant") }
                     }
                 }
             }
@@ -146,7 +151,7 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
             initialMinute = 0,
             onDismiss = { showAddPicker = false },
             onConfirm = { hour, minute ->
-                if (!notificationsGranted()) postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                requestNotificationPermissionIfNeeded()
                 viewModel.addReminder(hour, minute, labelFor(hour))
                 showAddPicker = false
             }

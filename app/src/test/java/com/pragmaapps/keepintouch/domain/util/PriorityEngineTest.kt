@@ -60,6 +60,12 @@ class PriorityEngineTest {
 
         val weekly = schedule(Recurrence.WEEKLY, nextDueDate = dayMillis(10))
         assertEquals(100.0, PriorityEngine.score(weekly, now = dayMillis(17)), 0.0001)
+
+        val biweekly = schedule(Recurrence.BIWEEKLY, nextDueDate = dayMillis(10))
+        assertEquals(100.0, PriorityEngine.score(biweekly, now = dayMillis(24)), 0.0001)
+
+        val monthly = schedule(Recurrence.MONTHLY, nextDueDate = dayMillis(10))
+        assertEquals(100.0, PriorityEngine.score(monthly, now = dayMillis(40)), 0.0001)
     }
 
     @Test

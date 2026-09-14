@@ -2,6 +2,16 @@
 
 package com.pragmaapps.keepintouch.ui.screens.confirm
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -71,7 +81,8 @@ fun ConfirmScreen(
                     PendingMatchCard(
                         display = display,
                         onConfirmSchedule = { scheduleId -> viewModel.confirmSchedule(display.pendingMatch.id, scheduleId) },
-                        onDismiss = { viewModel.dismiss(display.pendingMatch.id) }
+                        onDismiss = { viewModel.dismiss(display.pendingMatch.id) },
+                        modifier = Modifier.animateItem()
                     )
                 }
             }
@@ -88,13 +99,19 @@ fun ConfirmScreen(
 private fun PendingMatchCard(
     display: PendingMatchDisplay,
     onConfirmSchedule: (Long?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var candidateIndex by remember(display.pendingMatch.id) { mutableIntStateOf(0) }
     val candidate = display.candidateSchedules.getOrNull(candidateIndex)
 
-    Card(Modifier.fillMaxWidth().padding(vertical = Spacing.xs)) {
-        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+    Card(modifier.fillMaxWidth().padding(vertical = Spacing.xs)) {
+        Column(
+            Modifier
+                .padding(Spacing.lg)
+                .animateContentSize(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+        ) {
             val event = display.callEvent
             Text(
                 "Call from \"${event?.notificationName ?: "?"}\"" +
@@ -103,22 +120,35 @@ private fun PendingMatchCard(
             )
             Text(display.pendingMatch.reason, style = MaterialTheme.typography.bodySmall)
 
-            if (candidate != null) {
-                Text("Was this call with ${candidate.displayNameSnapshot}?", style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedButton(
-                        onClick = {
-                            if (candidateIndex + 1 >= display.candidateSchedules.size) onDismiss() else candidateIndex++
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("No") }
-                    Button(
-                        onClick = { onConfirmSchedule(candidate.id) },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Yes") }
+            // Keyed on candidateIndex (not the candidate itself) so stepping through the list -
+            // even if the same schedule id somehow repeats - still always animates.
+            AnimatedContent(
+                targetState = candidateIndex to candidate,
+                transitionSpec = {
+                    (fadeIn(tween(220)) + scaleIn(initialScale = 0.9f, animationSpec = tween(220)))
+                        .togetherWith(fadeOut(tween(120)) + scaleOut(targetScale = 0.9f, animationSpec = tween(120)))
+                },
+                label = "pending-match-candidate"
+            ) { (_, shownCandidate) ->
+                if (shownCandidate != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text("Was this call with ${shownCandidate.displayNameSnapshot}?", style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (candidateIndex + 1 >= display.candidateSchedules.size) onDismiss() else candidateIndex++
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("No") }
+                            Button(
+                                onClick = { onConfirmSchedule(shownCandidate.id) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Yes") }
+                        }
+                    }
+                } else {
+                    OutlinedButton(onClick = onDismiss) { Text("Dismiss") }
                 }
-            } else {
-                OutlinedButton(onClick = onDismiss) { Text("Dismiss") }
             }
         }
     }

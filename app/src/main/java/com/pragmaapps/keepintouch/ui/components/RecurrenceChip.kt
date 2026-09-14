@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Repeat
@@ -25,6 +28,8 @@ fun Recurrence.label(): String = when (this) {
     Recurrence.ONE_TIME -> "One time"
     Recurrence.DAILY -> "Daily"
     Recurrence.WEEKLY -> "Weekly"
+    Recurrence.BIWEEKLY -> "Bi-weekly"
+    Recurrence.MONTHLY -> "Monthly"
 }
 
 /** A quiet, purely informational badge - not an interactive control, so it never renders "disabled." */
@@ -34,6 +39,8 @@ fun RecurrenceChip(recurrence: Recurrence, modifier: Modifier = Modifier) {
         Recurrence.ONE_TIME -> Icons.Filled.Event
         Recurrence.DAILY -> Icons.Filled.CalendarToday
         Recurrence.WEEKLY -> Icons.Filled.Repeat
+        Recurrence.BIWEEKLY -> Icons.Filled.DateRange
+        Recurrence.MONTHLY -> Icons.Filled.CalendarMonth
     }
     Surface(
         modifier = modifier,
@@ -91,6 +98,47 @@ fun PriorityChip(delayPercent: Double, modifier: Modifier = Modifier) {
                 if (isDelayed) "${delayPercent.roundToInt()}% delayed" else "On time",
                 style = MaterialTheme.typography.labelMedium,
                 color = contentColor
+            )
+        }
+    }
+}
+
+/**
+ * Same quiet badge treatment as [RecurrenceChip]/[PriorityChip], for how many qualifying calls -
+ * scheduled and unscheduled combined, same two counts as Contact Detail's stat tiles - this
+ * contact has had in [monthName]. That's the current month for an active schedule, but the most
+ * recent month that actually had a call for a paused one, so the number doesn't just read "0 this
+ * month" the instant it's paused - see PeopleViewModel.callStatFor. [monthName] is null only when
+ * this contact has never had a single qualifying call ("No calls yet").
+ */
+@Composable
+fun CallsThisMonthChip(count: Int, monthName: String?, modifier: Modifier = Modifier) {
+    val label = when {
+        monthName == null -> "No calls yet"
+        count == 0 -> "No calls made in $monthName"
+        count == 1 -> "1 call made in $monthName"
+        else -> "$count calls made in $monthName"
+    }
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Call,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
     }

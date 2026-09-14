@@ -24,6 +24,9 @@ object PriorityEngine {
     private val ONE_TIME_CADENCE_MS = DAY_MS
     private val DAILY_CADENCE_MS = DAY_MS
     private val WEEKLY_CADENCE_MS = DAY_MS * 7
+    private val BIWEEKLY_CADENCE_MS = DAY_MS * 14
+    /** Approximate - MONTHLY's actual calendar-month cadence varies (28-31 days); close enough for a sort-only normalization. */
+    private val MONTHLY_CADENCE_MS = DAY_MS * 30
 
     /** The moment this schedule is actually due, including its time-of-day if one was set. */
     fun dueInstantMillis(schedule: Schedule): Long {
@@ -56,6 +59,8 @@ object PriorityEngine {
             Recurrence.ONE_TIME -> ONE_TIME_CADENCE_MS
             Recurrence.DAILY -> DAILY_CADENCE_MS
             Recurrence.WEEKLY -> WEEKLY_CADENCE_MS
+            Recurrence.BIWEEKLY -> BIWEEKLY_CADENCE_MS
+            Recurrence.MONTHLY -> MONTHLY_CADENCE_MS
         }
         val overdueMs = (now - dueInstantMillis(schedule)).coerceAtLeast(0)
         return overdueMs.toDouble() / cadenceMs

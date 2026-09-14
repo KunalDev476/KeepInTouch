@@ -47,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pragmaapps.keepintouch.domain.model.CallEvent
@@ -77,7 +78,9 @@ fun ContactDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.contact?.displayName ?: "Contact") },
+                title = {
+                    Text(uiState.contact?.displayName ?: "Contact", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -100,10 +103,19 @@ fun ContactDetailScreen(
         ) {
             item {
                 if (contact != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+                    ) {
                         AvatarWithWhatsAppBadge(displayName = contact.displayName, hasWhatsApp = contact.hasWhatsApp, size = 64.dp)
-                        Column {
-                            Text(contact.displayName, style = MaterialTheme.typography.headlineSmall)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                contact.displayName,
+                                style = MaterialTheme.typography.headlineSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             contact.primaryNumber?.let {
                                 Text(PhoneMasking.mask(it), style = MaterialTheme.typography.bodyMedium)
                             }
@@ -147,7 +159,7 @@ fun ContactDetailScreen(
                 }
             }
             if (contact != null && uiState.timeline.isEmpty()) {
-                item { Text("No calls detected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                item { Text("No calls yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             items(uiState.timeline, key = { it.id }) { event ->
                 TimelineRow(event)
@@ -202,7 +214,7 @@ private fun ScheduleCard(
                 Modifier.padding(top = Spacing.xs).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
-                Text("Next due ${DateMath.formatDate(schedule.nextDueDate)}", style = MaterialTheme.typography.bodyMedium)
+                Text("Next call ${DateMath.formatDate(schedule.nextDueDate)}", style = MaterialTheme.typography.bodyMedium)
                 schedule.preferredTimeMinutes?.let { start ->
                     val label = schedule.comfortableTimeEndMinutes?.let { end ->
                         "${DateMath.formatTimeOfDay(start)} - ${DateMath.formatTimeOfDay(end)}"
@@ -259,7 +271,7 @@ private fun TimelineRow(event: CallEvent) {
         Column(Modifier.weight(1f)) {
             Text(DateMath.formatDate(event.postTime), style = MaterialTheme.typography.bodyMedium)
             Text(
-                event.inferredDurationMs?.let { "${it / 1000}s" } ?: "no duration",
+                event.inferredDurationMs?.let { "${it / 1000}s" } ?: "Length unknown",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

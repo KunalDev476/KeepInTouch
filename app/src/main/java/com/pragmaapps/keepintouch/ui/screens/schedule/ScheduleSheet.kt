@@ -78,6 +78,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.util.DateMath
+import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.components.SegmentedControl
 import com.pragmaapps.keepintouch.ui.components.label
 import com.pragmaapps.keepintouch.ui.theme.Spacing
@@ -125,7 +126,12 @@ fun ScheduleSheet(
     fun renameWithPermission() {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) ==
             PackageManager.PERMISSION_GRANTED
-        if (granted) viewModel.confirmRename() else writeContactsLauncher.launch(Manifest.permission.WRITE_CONTACTS)
+        if (granted) {
+            viewModel.confirmRename()
+        } else {
+            ForegroundResetGate.suppressNext()
+            writeContactsLauncher.launch(Manifest.permission.WRITE_CONTACTS)
+        }
     }
 
     /**
@@ -137,6 +143,7 @@ fun ScheduleSheet(
     fun requestExactAlarmAccessIfNeeded() {
         val alarmManager = ContextCompat.getSystemService(context, AlarmManager::class.java)
         if (alarmManager?.canScheduleExactAlarms() == false) {
+            ForegroundResetGate.suppressNext()
             context.startActivity(
                 Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))
             )
@@ -151,7 +158,10 @@ fun ScheduleSheet(
     ) { granted -> postNotificationsGranted = granted }
 
     fun requestNotificationPermissionIfNeeded() {
-        if (!notificationsGranted()) postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (!notificationsGranted()) {
+            ForegroundResetGate.suppressNext()
+            postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     ModalBottomSheet(

@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -69,13 +70,20 @@ import com.pragmaapps.keepintouch.ui.theme.Spacing
 fun TodayScreen(onOpenConfirm: () -> Unit = {}, viewModel: TodayViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Today") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Today's Calls") }) }) { padding ->
         if (uiState.isLoading) {
             LoadingSkeleton(modifier = Modifier.fillMaxSize().padding(padding))
             return@Scaffold
         }
 
         Column(Modifier.fillMaxSize().padding(padding)) {
+            Text(
+                "See who you need to call today and keep track of completed calls.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(start = Spacing.lg, end = Spacing.lg, top = 0.dp, bottom = Spacing.sm)
+            )
+
             Row(
                 Modifier.fillMaxWidth().padding(Spacing.lg),
                 verticalAlignment = Alignment.CenterVertically,
@@ -84,11 +92,11 @@ fun TodayScreen(onOpenConfirm: () -> Unit = {}, viewModel: TodayViewModel = hilt
                 ProgressRing(completed = uiState.doneCount, total = uiState.items.size)
                 Column {
                     Text(
-                        "${uiState.toCallCount} to call, ${uiState.doneCount} done",
+                        if (uiState.toCallCount == 1) "1 call left today" else "${uiState.toCallCount} calls left today",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "Fulfilled automatically by a qualifying call, or swipe right to log it yourself.",
+                        "Complete the call and we'll mark it as done, or swipe right to mark it done",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -108,7 +116,7 @@ fun TodayScreen(onOpenConfirm: () -> Unit = {}, viewModel: TodayViewModel = hilt
                     ) {
                         Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
                         Text(
-                            "${uiState.pendingConfirmationCount} call(s) need confirmation",
+                            if (uiState.pendingConfirmationCount == 1) "1 call needs confirmation" else "${uiState.pendingConfirmationCount} calls need confirmation",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -125,7 +133,7 @@ fun TodayScreen(onOpenConfirm: () -> Unit = {}, viewModel: TodayViewModel = hilt
                 )
             } else {
                 Text(
-                    "Sorted by priority, with the highest priority on top.",
+                    "Your most important calls appear first.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs)
@@ -252,7 +260,9 @@ private fun TodayRow(item: TodayItem) {
             Text(
                 item.schedule.displayNameSnapshot,
                 textDecoration = if (item.done) TextDecoration.LineThrough else TextDecoration.None,
-                color = if (item.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                color = if (item.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         },
         supportingContent = {

@@ -9,6 +9,8 @@ import com.pragmaapps.keepintouch.domain.model.ScheduleStatus
  * - ONE_TIME: due on [Schedule.nextDueDate], then becomes inactive on fulfillment. No further occurrences.
  * - DAILY: due every day; fulfilling advances nextDueDate to the day after the completion date.
  * - WEEKLY: fulfilling advances nextDueDate 7 days after the completion date.
+ * - BIWEEKLY: fulfilling advances nextDueDate 14 days after the completion date.
+ * - MONTHLY: fulfilling advances nextDueDate 1 calendar month after the completion date (see DateMath.plusMonths).
  *
  * Advancing from the completion date (not the previous nextDueDate) means an overdue schedule
  * that gets fulfilled late doesn't stay perpetually overdue - it resets forward from "now."
@@ -19,6 +21,23 @@ object RecurrenceEngine {
         Recurrence.ONE_TIME -> schedule.copy(active = false)
         Recurrence.DAILY -> schedule.copy(nextDueDate = DateMath.plusDays(completedAt, 1))
         Recurrence.WEEKLY -> schedule.copy(nextDueDate = DateMath.plusDays(completedAt, 7))
+        Recurrence.BIWEEKLY -> schedule.copy(nextDueDate = DateMath.plusDays(completedAt, 14))
+        Recurrence.MONTHLY -> schedule.copy(nextDueDate = DateMath.plusMonths(completedAt, 1))
+    }
+
+    /**
+     * The natural first due date for a brand-new schedule of this recurrence, projected forward
+     * from [from] (normally "now") instead of defaulting to [from]'s own day - mirrors
+     * [advanceAfterCompletion]'s own interval per recurrence, treating creation as if the cadence
+     * had just restarted. ONE_TIME is the one exception: a single occurrence has no cadence to
+     * project forward, so it stays on [from]'s own day until the user picks a specific date.
+     */
+    fun defaultNextDueDate(recurrence: Recurrence, from: Long): Long = when (recurrence) {
+        Recurrence.ONE_TIME -> DateMath.startOfDayMillis(from)
+        Recurrence.DAILY -> DateMath.plusDays(from, 1)
+        Recurrence.WEEKLY -> DateMath.plusDays(from, 7)
+        Recurrence.BIWEEKLY -> DateMath.plusDays(from, 14)
+        Recurrence.MONTHLY -> DateMath.plusMonths(from, 1)
     }
 
     /** Due today or overdue - both remain actionable until fulfilled. */
@@ -80,6 +99,17 @@ object RecurrenceEngine {
                 val fullWeeksElapsed = (elapsedDays / 7).toInt()
                 val currentCycleStartedToday = elapsedDays % 7 == 0L
                 fullWeeksElapsed + (if (!currentCycleStartedToday || todaysOccurrenceExpected) 1 else 0)
+            }
+            Recurrence.BIWEEKLY -> {
+                val fullCyclesElapsed = (elapsedDays / 14).toInt()
+                val currentCycleStartedToday = elapsedDays % 14 == 0L
+                fullCyclesElapsed + (if (!currentCycleStartedToday || todaysOccurrenceExpected) 1 else 0)
+            }
+            Recurrence.MONTHLY -> {
+                val fullMonthsElapsed = DateMath.monthsBetween(schedule.startDate, now)
+                val currentCycleStartedToday =
+                    DateMath.plusMonths(schedule.startDate, fullMonthsElapsed) == DateMath.startOfDayMillis(now)
+                fullMonthsElapsed.toInt() + (if (!currentCycleStartedToday || todaysOccurrenceExpected) 1 else 0)
             }
         }
         return (expectedCycles - completionCount).coerceAtLeast(0)

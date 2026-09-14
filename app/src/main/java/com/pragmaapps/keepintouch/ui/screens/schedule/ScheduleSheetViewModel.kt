@@ -9,6 +9,7 @@ import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.domain.util.NameNormalizer
+import com.pragmaapps.keepintouch.domain.util.RecurrenceEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +28,7 @@ data class ScheduleSheetUiState(
     val isEditMode: Boolean = false,
     val contact: Contact? = null,
     val recurrence: Recurrence = Recurrence.WEEKLY,
-    val nextDueDate: Long = DateMath.startOfDayMillis(System.currentTimeMillis()),
+    val nextDueDate: Long = RecurrenceEngine.defaultNextDueDate(Recurrence.WEEKLY, System.currentTimeMillis()),
     val note: String = "",
     val saved: Boolean = false,
     val notFound: Boolean = false,
@@ -110,8 +111,20 @@ class ScheduleSheetViewModel @Inject constructor(
         }
     }
 
+    /**
+     * For a brand-new schedule, changing the recurrence also re-projects [nextDueDate] forward
+     * from today via [RecurrenceEngine.defaultNextDueDate] - see that function's doc for why. Edit
+     * mode leaves the existing due date alone: it's already a real, possibly-user-picked value for
+     * this schedule, not a stand-in default waiting to be replaced.
+     */
     fun onRecurrenceChange(recurrence: Recurrence) {
-        _uiState.value = _uiState.value.copy(recurrence = recurrence)
+        val state = _uiState.value
+        val nextDueDate = if (state.isEditMode) {
+            state.nextDueDate
+        } else {
+            RecurrenceEngine.defaultNextDueDate(recurrence, System.currentTimeMillis())
+        }
+        _uiState.value = state.copy(recurrence = recurrence, nextDueDate = nextDueDate)
     }
 
     fun onDueDateChange(epochMillis: Long) {

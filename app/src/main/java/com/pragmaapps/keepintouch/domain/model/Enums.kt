@@ -4,7 +4,9 @@ package com.pragmaapps.keepintouch.domain.model
 enum class Recurrence {
     ONE_TIME,
     DAILY,
-    WEEKLY
+    WEEKLY,
+    BIWEEKLY,
+    MONTHLY
 }
 
 /** A schedule's health right now, relative to [Schedule.nextDueDate] - see RecurrenceEngine.status(). */
