@@ -134,14 +134,18 @@ fun PeopleScreen(
                 )
             }
 
-            OutlinedTextField(
-                value = uiState.query,
-                onValueChange = viewModel::onQueryChange,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-                placeholder = { Text("Search people by name or number") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true
-            )
+            // Search only applies to All contacts - Call Schedules is short enough to scan by eye.
+            if (uiState.segment == PeopleSegment.ALL) {
+                OutlinedTextField(
+                    value = uiState.query,
+                    onValueChange = viewModel::onQueryChange,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                    // Ellipsized rather than wrapped, so narrow screens show "Search people by name or…" on one line.
+                    placeholder = { Text("Search people by name or number", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    singleLine = true
+                )
+            }
 
             val scheduledListState = androidx.compose.foundation.lazy.rememberLazyListState()
             val allContactsListState = androidx.compose.foundation.lazy.rememberLazyListState()

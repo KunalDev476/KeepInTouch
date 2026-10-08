@@ -156,10 +156,8 @@ class PeopleViewModel @Inject constructor(
         // special-casing here. A fulfilled ONE_TIME schedule also deactivates (nothing left to
         // repeat - see RecurrenceEngine.advanceAfterCompletion) but reads as "Completed" rather
         // than "Paused" since it has a real completion behind it.
+        // Not filtered by the search query - the search bar is only shown on All contacts.
         val scheduledRows = schedules
-            .filter {
-                if (isNumberQuery) SearchMatcher.matchesNumber(it.numberSnapshot, query) else SearchMatcher.matches(it.displayNameSnapshot, query)
-            }
             .map { schedule ->
                 val (statCount, statMonthName) = callStatFor(
                     schedule = schedule,
@@ -195,6 +193,9 @@ class PeopleViewModel @Inject constructor(
     ) == PackageManager.PERMISSION_GRANTED
 
     fun onSegmentChange(newSegment: PeopleSegment) {
+        // Drop any typed search on switch, so returning to All contacts starts unfiltered
+        // rather than silently keeping a query whose search bar was hidden.
+        if (newSegment != segment.value) query.value = ""
         segment.value = newSegment
     }
 
