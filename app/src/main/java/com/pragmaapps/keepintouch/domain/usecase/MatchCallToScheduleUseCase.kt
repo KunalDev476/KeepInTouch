@@ -5,7 +5,6 @@ import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import com.pragmaapps.keepintouch.domain.util.NameNormalizer
-import com.pragmaapps.keepintouch.domain.util.NameSimilarity
 import com.pragmaapps.keepintouch.domain.util.PhoneNumberMatching
 import javax.inject.Inject
 
@@ -76,45 +75,26 @@ class MatchCallToScheduleUseCase @Inject constructor(
             )
         }
 
-        val allActive = scheduleRepository.getActiveSnapshot()
-        val scored = allActive
-            .map { it to NameSimilarity.similarity(normalizedCaller, it.normalizedNameSnapshot) }
-            .filter { it.second >= NameSimilarity.MIN_CANDIDATE_THRESHOLD }
-            .sortedByDescending { it.second }
+        // Exact (normalized) name matches only - no similarity/fuzzy tier. A near-miss like
+        // "Amar" vs "Amar Sir", or "Abhinav Maheshwari" vs "Dhruv Maheshwari", is simply not a
+        // match: a wrongly auto-completed schedule is worse than one the user marks done by hand.
 
-        if (scored.isEmpty()) {
-            // "Want to schedule this contact?" only makes sense once the user has shown some
-            // intent to use scheduling at all - with zero schedules ever created, this would
-            // otherwise fire a confirm prompt for literally every call from any saved contact.
-            if (!scheduleRepository.hasAnySchedule()) return MatchOutcome.NoMatch
+        // "Want to schedule this contact?" only makes sense once the user has shown some
+        // intent to use scheduling at all - with zero schedules ever created, this would
+        // otherwise fire a confirm prompt for literally every call from any saved contact.
+        if (!scheduleRepository.hasAnySchedule()) return MatchOutcome.NoMatch
 
-            val contactMatches = contactRepository.findByNormalizedName(normalizedCaller)
-            val withoutSchedule = contactMatches.filter { contact ->
-                scheduleRepository.findByContactLookupKey(contact.lookupKey).none { it.active }
-            }
-            return if (withoutSchedule.isNotEmpty()) {
-                MatchOutcome.ContactWithoutSchedule(
-                    withoutSchedule.map { it.id },
-                    "Caller name matches ${withoutSchedule.size} synced contact(s) with no active schedule."
-                )
-            } else {
-                MatchOutcome.NoMatch
-            }
+        val contactMatches = contactRepository.findByNormalizedName(normalizedCaller)
+        val withoutSchedule = contactMatches.filter { contact ->
+            scheduleRepository.findByContactLookupKey(contact.lookupKey).none { it.active }
         }
-
-        val top = scored.first()
-        val isUniqueTop = scored.size == 1 || scored[1].second < top.second
-        return if (top.second >= NameSimilarity.AUTO_MATCH_THRESHOLD && isUniqueTop) {
-            MatchOutcome.UniqueSchedule(
-                top.first.id,
-                MatchConfidence.FUZZY,
-                "Fuzzy match score %.2f (>= %.2f threshold) uniquely identifies this schedule.".format(top.second, NameSimilarity.AUTO_MATCH_THRESHOLD)
+        return if (withoutSchedule.isNotEmpty()) {
+            MatchOutcome.ContactWithoutSchedule(
+                withoutSchedule.map { it.id },
+                "Caller name matches ${withoutSchedule.size} synced contact(s) with no active schedule."
             )
         } else {
-            MatchOutcome.UncertainSchedules(
-                scored.map { it.first.id },
-                "Fuzzy match(es) below the confident/unique threshold (top score %.2f); needs human confirmation.".format(top.second)
-            )
+            MatchOutcome.NoMatch
         }
     }
 }

@@ -67,15 +67,36 @@ class MatchCallToScheduleUseCaseTest {
     }
 
     @Test
-    fun `a confident unique fuzzy match auto-attaches as FUZZY`() = runTest {
+    fun `a one-character typo is not a match`() = runTest {
         val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Sharma")))
         val contacts = FakeContactRepository()
         val useCase = MatchCallToScheduleUseCase(schedules, contacts)
 
-        val outcome = useCase("Sharmaa") // one-character insertion typo
+        val outcome = useCase("Sharmaa")
 
-        assertTrue(outcome is MatchOutcome.UniqueSchedule)
-        assertEquals(MatchConfidence.FUZZY, (outcome as MatchOutcome.UniqueSchedule).confidence)
+        assertEquals(MatchOutcome.NoMatch, outcome)
+    }
+
+    @Test
+    fun `a shared surname with a different first name is not a match`() = runTest {
+        val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Dhruv Maheshwari")))
+        val contacts = FakeContactRepository()
+        val useCase = MatchCallToScheduleUseCase(schedules, contacts)
+
+        val outcome = useCase("Abhinav Maheshwari")
+
+        assertEquals(MatchOutcome.NoMatch, outcome)
+    }
+
+    @Test
+    fun `only the full name matches - a partial or extended name does not`() = runTest {
+        val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Amar Sir")))
+        val contacts = FakeContactRepository()
+        val useCase = MatchCallToScheduleUseCase(schedules, contacts)
+
+        assertEquals(MatchOutcome.NoMatch, useCase("Amar"))
+        assertEquals(MatchOutcome.NoMatch, useCase("Amar Sirji"))
+        assertTrue(useCase("Amar Sir") is MatchOutcome.UniqueSchedule)
     }
 
     @Test
@@ -128,18 +149,6 @@ class MatchCallToScheduleUseCaseTest {
         val outcome = useCase("Priya")
 
         assertEquals(MatchOutcome.NoMatch, outcome)
-    }
-
-    @Test
-    fun `a low-confidence fuzzy match needs confirmation rather than auto-attaching`() = runTest {
-        // "Rahul" vs "Rahool" - similarity is below the 0.85 auto-attach threshold but above the 0.6 floor.
-        val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Rahul")))
-        val contacts = FakeContactRepository()
-        val useCase = MatchCallToScheduleUseCase(schedules, contacts)
-
-        val outcome = useCase("Rahool")
-
-        assertTrue("expected UncertainSchedules but was $outcome", outcome is MatchOutcome.UncertainSchedules)
     }
 
     @Test

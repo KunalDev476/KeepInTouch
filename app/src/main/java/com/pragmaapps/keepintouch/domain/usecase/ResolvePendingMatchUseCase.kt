@@ -7,8 +7,8 @@ import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import javax.inject.Inject
 
 /**
- * The Confirm screen's "this is the one" / "none of these" action for duplicate-name or
- * uncertain-fuzzy pending matches (spec cases c/d). Picking a schedule fulfills it with
+ * The Confirm screen's "this is the one" / "none of these" action for duplicate-name (or
+ * duplicate-number) pending matches. Picking a schedule fulfills it with
  * CONFIRMED_BY_USER; picking none just marks the item resolved with no fulfillment.
  */
 class ResolvePendingMatchUseCase @Inject constructor(

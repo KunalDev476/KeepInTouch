@@ -39,7 +39,10 @@ enum class MatchConfidence {
     EXACT,
     /** Match after name normalization (case/whitespace/diacritics/emoji-insensitive). */
     NORMALIZED,
-    /** Confident fuzzy string match, unique among candidates. */
+    /**
+     * Legacy: fuzzy name matching has been removed, but older call/completion rows may still
+     * carry this value (stored by name), so it must stay readable.
+     */
     FUZZY,
     /**
      * The notification never carried a name at all - just a raw phone number (the OS's own

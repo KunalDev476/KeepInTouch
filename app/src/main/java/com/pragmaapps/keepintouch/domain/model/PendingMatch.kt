@@ -1,8 +1,8 @@
 package com.pragmaapps.keepintouch.domain.model
 
 /**
- * A qualifying call that could not be auto-attached to exactly one schedule - duplicate names, a
- * low-confidence fuzzy match, or a name that matches a synced contact with no schedule yet.
+ * A qualifying call that could not be auto-attached to exactly one schedule - two or more active
+ * schedules share the caller's exact (normalized) name or saved number.
  * Surfaced on the Confirm screen until a human resolves it.
  */
 data class PendingMatch(

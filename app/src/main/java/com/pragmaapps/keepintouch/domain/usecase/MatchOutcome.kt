@@ -19,7 +19,4 @@ sealed class MatchOutcome {
 
     /** Two or more active schedules share this (normalized) name - needs human confirmation. */
     data class DuplicateSchedules(val scheduleIds: List<Long>, val explanation: String) : MatchOutcome()
-
-    /** A fuzzy match existed but wasn't confident/unique enough to auto-attach - needs human confirmation. */
-    data class UncertainSchedules(val scheduleIds: List<Long>, val explanation: String) : MatchOutcome()
 }

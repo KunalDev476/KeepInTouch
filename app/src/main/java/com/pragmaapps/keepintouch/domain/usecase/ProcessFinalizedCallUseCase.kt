@@ -46,7 +46,6 @@ class ProcessFinalizedCallUseCase @Inject constructor(
             // explain this outcome (see outcome.explanation); it just never becomes a Confirm prompt.
             is MatchOutcome.ContactWithoutSchedule -> Unit
             is MatchOutcome.DuplicateSchedules -> insertPending(event, outcome.scheduleIds, outcome.explanation)
-            is MatchOutcome.UncertainSchedules -> insertPending(event, outcome.scheduleIds, outcome.explanation)
             MatchOutcome.NoMatch -> Unit // caller not in contacts / no plausible candidate at all
         }
     }
