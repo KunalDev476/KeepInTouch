@@ -8,6 +8,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class FakeContactRepository(initial: List<Contact> = emptyList()) : ContactRepository {
     private val state = MutableStateFlow(initial)
 
+    /** Stale lookup key -> the key the "address book" now reports for that same contact. */
+    val lookupKeyChanges = mutableMapOf<String, String>()
+
+    fun setContacts(contacts: List<Contact>) {
+        state.value = contacts
+    }
+
     override fun observeAll() = state
 
     override suspend fun findByLookupKey(lookupKey: String): Contact? = state.value.find { it.lookupKey == lookupKey }
@@ -17,6 +24,8 @@ class FakeContactRepository(initial: List<Contact> = emptyList()) : ContactRepos
         state.value.filter { it.normalizedName == normalizedName }
 
     override suspend fun syncContacts(): Int = state.value.size
+
+    override suspend fun resolveCurrentLookupKey(staleLookupKey: String): String? = lookupKeyChanges[staleLookupKey]
 
     override suspend fun learnAvatarHash(contactId: Long, hash: String) {
         state.value = state.value.map { if (it.id == contactId) it.copy(learnedAvatarHash = hash) else it }

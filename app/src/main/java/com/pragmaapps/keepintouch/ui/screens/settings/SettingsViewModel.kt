@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.pragmaapps.keepintouch.data.prefs.DetectionPreferences
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.repository.DataManagementRepository
+import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.domain.util.DetectionSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +42,8 @@ class SettingsViewModel @Inject constructor(
     application: Application,
     private val detectionPreferences: DetectionPreferences,
     private val contactRepository: ContactRepository,
-    private val dataManagementRepository: DataManagementRepository
+    private val dataManagementRepository: DataManagementRepository,
+    private val syncContacts: SyncContactsUseCase
 ) : AndroidViewModel(application) {
 
     private val permissionState = MutableStateFlow(checkPermissions())
@@ -75,7 +77,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun resyncContacts() {
-        viewModelScope.launch { contactRepository.syncContacts() }
+        viewModelScope.launch { syncContacts() }
     }
 
     fun setMinDurationSeconds(seconds: Int) = detectionPreferences.setMinDurationMs(seconds * 1000L)

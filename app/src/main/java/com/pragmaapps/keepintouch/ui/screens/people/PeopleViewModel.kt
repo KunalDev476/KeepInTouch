@@ -14,6 +14,7 @@ import com.pragmaapps.keepintouch.domain.repository.CallEventRepository
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleCompletionRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
+import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.domain.util.NameNormalizer
 import com.pragmaapps.keepintouch.domain.util.SearchMatcher
@@ -57,7 +58,8 @@ data class AllContactRow(val contact: Contact, val schedule: Schedule?)
 
 /**
  * Pure, so it's unit-testable without a ViewModel/Hilt harness - see PeopleViewModelCallStatTest.
- * [qualifiedEvents] is already pre-filtered to this one schedule's normalized name.
+ * [qualifiedEvents] is already pre-filtered to this one schedule - by normalized name, plus any
+ * calls attributed to it by id.
  *
  * An active schedule reports the current calendar month, even if that's 0 so far - it's the
  * live, ongoing window. A paused/completed one instead reports whichever past month most recently
@@ -94,7 +96,8 @@ class PeopleViewModel @Inject constructor(
     private val contactRepository: ContactRepository,
     private val scheduleRepository: ScheduleRepository,
     private val callEventRepository: CallEventRepository,
-    private val completionRepository: ScheduleCompletionRepository
+    private val completionRepository: ScheduleCompletionRepository,
+    private val syncContactsUseCase: SyncContactsUseCase
 ) : ViewModel() {
 
     private val segment = MutableStateFlow(PeopleSegment.SCHEDULED)
@@ -117,7 +120,9 @@ class PeopleViewModel @Inject constructor(
     }
         .combine(syncing) { state, isSyncing -> state.copy(syncing = isSyncing) }
         .combine(permissionGranted) { state, granted -> state.copy(contactsPermissionGranted = granted) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PeopleUiState())
+        // Seeded with the real permission, not the default false - otherwise the "Contacts access
+        // needed" prompt flashes on every fresh open until the first data emission corrects it.
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PeopleUiState(contactsPermissionGranted = checkPermission()))
 
     private fun buildState(
         contacts: List<Contact>,
@@ -144,10 +149,12 @@ class PeopleViewModel @Inject constructor(
         // tiles (the latter counts every qualifying call matching the contact by name, whether or
         // not it ever got attributed to a schedule id - see ContactDetailViewModel.callCounts).
         // Matching on the schedule's own normalizedNameSnapshot instead reproduces that same
-        // combined total without needing a live Contact lookup.
-        val qualifiedEventsByNormalizedName = callEvents
-            .filter { it.qualified }
-            .groupBy { NameNormalizer.normalize(it.notificationName) }
+        // combined total without needing a live Contact lookup. Calls already attributed to the
+        // schedule are added back in by id, so renaming the contact (which refreshes the snapshot
+        // - see SyncContactsUseCase) doesn't drop the calls made under its old name.
+        val qualifiedEvents = callEvents.filter { it.qualified }
+        val qualifiedEventsByNormalizedName = qualifiedEvents.groupBy { NameNormalizer.normalize(it.notificationName) }
+        val qualifiedEventsByScheduleId = qualifiedEvents.filter { it.matchedScheduleId != null }.groupBy { it.matchedScheduleId }
         val now = System.currentTimeMillis()
 
         // Never filtered by active - pausing a schedule (Contact Detail's Pause/Resume toggle)
@@ -161,7 +168,10 @@ class PeopleViewModel @Inject constructor(
             .map { schedule ->
                 val (statCount, statMonthName) = callStatFor(
                     schedule = schedule,
-                    qualifiedEvents = qualifiedEventsByNormalizedName[schedule.normalizedNameSnapshot].orEmpty(),
+                    qualifiedEvents = (
+                        qualifiedEventsByNormalizedName[schedule.normalizedNameSnapshot].orEmpty() +
+                            qualifiedEventsByScheduleId[schedule.id].orEmpty()
+                        ).distinctBy { it.id },
                     now = now
                 )
                 ScheduledPersonRow(
@@ -216,7 +226,7 @@ class PeopleViewModel @Inject constructor(
         viewModelScope.launch {
             syncing.value = true
             try {
-                contactRepository.syncContacts()
+                syncContactsUseCase()
             } finally {
                 syncing.value = false
             }

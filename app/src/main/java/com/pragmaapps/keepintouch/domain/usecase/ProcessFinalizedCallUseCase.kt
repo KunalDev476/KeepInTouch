@@ -23,10 +23,18 @@ class ProcessFinalizedCallUseCase @Inject constructor(
     private val fulfillSchedule: FulfillScheduleUseCase,
     private val scheduleRepository: ScheduleRepository,
     private val callEventRepository: CallEventRepository,
-    private val pendingMatchRepository: PendingMatchRepository
+    private val pendingMatchRepository: PendingMatchRepository,
+    private val syncContacts: SyncContactsUseCase
 ) {
     suspend operator fun invoke(event: CallEvent) {
-        val outcome = matchCallToSchedule(event.notificationName)
+        var outcome = matchCallToSchedule(event.notificationName)
+        // The contact may have been renamed moments ago, before the contacts observer's sync
+        // refreshed the schedule's name snapshot - sync once and retry before giving up. Only for
+        // qualifying calls, since only those can act on a match.
+        if (event.qualified && (outcome == MatchOutcome.NoMatch || outcome is MatchOutcome.ContactWithoutSchedule)) {
+            syncContacts()
+            outcome = matchCallToSchedule(event.notificationName)
+        }
         AppLogger.i(TAG, "Match outcome for \"${event.notificationName}\": ${outcome::class.simpleName}")
 
         // Always record the best-effort match attempt, even when not qualified, purely for Diagnostics.

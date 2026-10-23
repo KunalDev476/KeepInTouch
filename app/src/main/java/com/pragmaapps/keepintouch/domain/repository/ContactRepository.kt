@@ -13,6 +13,14 @@ interface ContactRepository {
     /** Re-reads the address book via ContentResolver and upserts into Room. Returns the synced count. */
     suspend fun syncContacts(): Int
 
+    /**
+     * Asks the address book which lookup key a contact has *now*, given one it used to have.
+     * Lookup keys of phone-only contacts embed the display name, so renaming one changes its key -
+     * the provider can still resolve the old key to the same person. Null if the contact is gone
+     * or the address book can't be read.
+     */
+    suspend fun resolveCurrentLookupKey(staleLookupKey: String): String?
+
     suspend fun learnAvatarHash(contactId: Long, hash: String)
 
     /**

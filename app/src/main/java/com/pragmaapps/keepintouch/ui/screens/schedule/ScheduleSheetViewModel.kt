@@ -7,6 +7,7 @@ import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
+import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.domain.util.NameNormalizer
 import com.pragmaapps.keepintouch.domain.util.RecurrenceEngine
@@ -68,7 +69,8 @@ data class NameCollisionInfo(
 @HiltViewModel
 class ScheduleSheetViewModel @Inject constructor(
     private val contactRepository: ContactRepository,
-    private val scheduleRepository: ScheduleRepository
+    private val scheduleRepository: ScheduleRepository,
+    private val syncContacts: SyncContactsUseCase
 ) : ViewModel() {
 
     private var existingSchedule: Schedule? = null
@@ -233,7 +235,7 @@ class ScheduleSheetViewModel @Inject constructor(
                 return@launch
             }
 
-            contactRepository.syncContacts()
+            syncContacts()
             val refreshed = contactRepository.findByLookupKey(contact.lookupKey)
                 ?: contact.copy(displayName = newName, normalizedName = normalizedNew)
             _uiState.value = _uiState.value.copy(contact = refreshed, nameCollision = null)

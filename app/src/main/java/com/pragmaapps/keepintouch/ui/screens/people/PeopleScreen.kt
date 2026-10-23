@@ -6,7 +6,9 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
@@ -32,7 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,10 +45,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -59,6 +65,7 @@ import com.pragmaapps.keepintouch.ui.components.EmptyState
 import com.pragmaapps.keepintouch.ui.components.LoadingSkeleton
 import com.pragmaapps.keepintouch.ui.components.SegmentedControl
 import com.pragmaapps.keepintouch.ui.components.label
+import com.pragmaapps.keepintouch.ui.components.verticalScrollbar
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import com.pragmaapps.keepintouch.ui.theme.extendedColors
 
@@ -106,7 +113,8 @@ fun PeopleScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (!uiState.contactsPermissionGranted) {
+            // Never while still loading - a not-yet-known state must show the skeleton, not this prompt.
+            if (!uiState.contactsPermissionGranted && !uiState.isLoading) {
                 ContactsPermissionPrompt(
                     onGrant = {
                         ForegroundResetGate.suppressNext()
@@ -136,14 +144,10 @@ fun PeopleScreen(
 
             // Search only applies to All contacts - Call Schedules is short enough to scan by eye.
             if (uiState.segment == PeopleSegment.ALL) {
-                OutlinedTextField(
-                    value = uiState.query,
-                    onValueChange = viewModel::onQueryChange,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-                    // Ellipsized rather than wrapped, so narrow screens show "Search people by name or…" on one line.
-                    placeholder = { Text("Search people by name or number", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    singleLine = true
+                PeopleSearchField(
+                    query = uiState.query,
+                    onQueryChange = viewModel::onQueryChange,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm)
                 )
             }
 
@@ -181,6 +185,49 @@ fun PeopleScreen(
     }
 }
 
+/**
+ * An outlined search field with less vertical padding inside than OutlinedTextField allows - that
+ * one enforces a 56dp minimum height. Built from the same Material decoration, so it looks and
+ * behaves like every other outlined field in the app, just a little shorter.
+ */
+@Composable
+private fun PeopleSearchField(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val colors = OutlinedTextFieldDefaults.colors()
+    BasicTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier,
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        interactionSource = interactionSource,
+        decorationBox = { innerTextField ->
+            OutlinedTextFieldDefaults.DecorationBox(
+                value = query,
+                innerTextField = innerTextField,
+                enabled = true,
+                singleLine = true,
+                visualTransformation = VisualTransformation.None,
+                interactionSource = interactionSource,
+                // Ellipsized rather than wrapped, so narrow screens show "Search people by name or…" on one line.
+                placeholder = { Text("Search people by name or number", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                colors = colors,
+                contentPadding = OutlinedTextFieldDefaults.contentPadding(top = 10.dp, bottom = 10.dp),
+                container = {
+                    OutlinedTextFieldDefaults.Container(
+                        enabled = true,
+                        isError = false,
+                        interactionSource = interactionSource,
+                        colors = colors
+                    )
+                }
+            )
+        }
+    )
+}
+
 @Composable
 private fun ContactsPermissionPrompt(onGrant: () -> Unit) {
     EmptyState(
@@ -200,15 +247,21 @@ private fun ScheduledList(
     onRowClick: (ScheduledPersonRow) -> Unit
 ) {
     if (rows.isEmpty()) {
-        EmptyState(
-            icon = Icons.Filled.People,
-            title = "No one scheduled yet",
-            subtitle = "Switch to \"All contacts\" and tap + on someone you want to stay in touch with.",
-            modifier = Modifier.fillMaxSize()
-        )
+        // Centered in the space below the segmented control, rather than pinned to its top.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            EmptyState(
+                icon = Icons.Filled.People,
+                title = "No one scheduled yet",
+                subtitle = "Switch to \"All contacts\" and tap + on someone you want to stay in touch with."
+            )
+        }
         return
     }
-    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = Spacing.xxl)) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().verticalScrollbar(listState),
+        contentPadding = PaddingValues(bottom = Spacing.xxl)
+    ) {
         items(rows, key = { it.schedule.id }) { row ->
             Column(Modifier.animateItem()) {
                 ListItem(
@@ -305,7 +358,11 @@ private fun AllContactsList(
         )
         return
     }
-    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = Spacing.xxl)) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().verticalScrollbar(listState),
+        contentPadding = PaddingValues(bottom = Spacing.xxl)
+    ) {
         items(rows, key = { it.contact.lookupKey }) { row ->
             Column(Modifier.animateItem()) {
                 AllContactRowItem(row, onScheduleContact, onOpenContact)

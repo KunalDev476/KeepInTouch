@@ -2,6 +2,7 @@ package com.pragmaapps.keepintouch.data.repository
 
 import android.content.ContentProviderOperation
 import android.content.Context
+import android.net.Uri
 import android.provider.ContactsContract
 import androidx.core.database.getStringOrNull
 import com.pragmaapps.keepintouch.data.db.dao.ContactDao
@@ -192,6 +193,26 @@ class ContactRepositoryImpl @Inject constructor(
             contactDao.deleteMissing(seenLookupKeys)
         }
         return merged.size
+    }
+
+    override suspend fun resolveCurrentLookupKey(staleLookupKey: String): String? = withContext(Dispatchers.IO) {
+        try {
+            // Querying CONTENT_LOOKUP_URI by key alone makes the provider fall back to the raw
+            // contacts encoded in a stale key, rather than requiring an exact current-key match.
+            val lookupUri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_LOOKUP_URI, Uri.encode(staleLookupKey))
+            context.contentResolver.query(
+                lookupUri,
+                arrayOf(ContactsContract.Contacts.LOOKUP_KEY),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getStringOrNull(0) else null
+            }
+        } catch (t: Throwable) {
+            AppLogger.e(TAG, "resolveCurrentLookupKey failed", t)
+            null
+        }
     }
 
     override suspend fun renameContact(contactId: Long, newDisplayName: String): Boolean = withContext(Dispatchers.IO) {

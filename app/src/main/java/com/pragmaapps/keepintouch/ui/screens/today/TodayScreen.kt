@@ -2,12 +2,14 @@
 
 package com.pragmaapps.keepintouch.ui.screens.today
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -19,11 +21,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Done
@@ -60,7 +66,9 @@ import kotlin.math.roundToInt
 import com.pragmaapps.keepintouch.domain.model.ScheduleStatus
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.ui.components.EmptyState
-import com.pragmaapps.keepintouch.ui.components.LoadingSkeleton
+import com.pragmaapps.keepintouch.ui.components.SkeletonBlock
+import com.pragmaapps.keepintouch.ui.components.SkeletonTextLine
+import com.pragmaapps.keepintouch.ui.components.rememberSkeletonColor
 import com.pragmaapps.keepintouch.ui.components.ProgressRing
 import com.pragmaapps.keepintouch.ui.components.RecurrenceChip
 import com.pragmaapps.keepintouch.ui.components.ScheduleStatusIcon
@@ -71,85 +79,158 @@ fun TodayScreen(onOpenConfirm: () -> Unit = {}, viewModel: TodayViewModel = hilt
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Today's Calls") }) }) { padding ->
-        if (uiState.isLoading) {
-            LoadingSkeleton(modifier = Modifier.fillMaxSize().padding(padding))
-            return@Scaffold
+        // Short fade from skeleton to content. To remove the fade, replace this Crossfade with a
+        // plain `if (uiState.isLoading) TodaySkeleton(...) else TodayContent(...)`.
+        Crossfade(targetState = uiState.isLoading, animationSpec = tween(150), label = "todayLoading") { loading ->
+            if (loading) {
+                TodaySkeleton(Modifier.fillMaxSize().padding(padding))
+            } else {
+                TodayContent(
+                    uiState = uiState,
+                    onOpenConfirm = onOpenConfirm,
+                    onMarkDone = viewModel::onMarkDone,
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                )
+            }
+        }
+    }
+}
+
+/** Static, so it's shown for real in [TodaySkeleton] too - nothing above the ring shifts when data arrives. */
+@Composable
+private fun TodayIntro() {
+    Text(
+        "See who you need to call today and keep track of completed calls.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(start = Spacing.lg, end = Spacing.lg, top = 0.dp, bottom = Spacing.sm)
+    )
+}
+
+@Composable
+private fun TodayContent(
+    uiState: TodayUiState,
+    onOpenConfirm: () -> Unit,
+    onMarkDone: (TodayItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier) {
+        TodayIntro()
+
+        Row(
+            Modifier.fillMaxWidth().padding(Spacing.lg),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.lg)
+        ) {
+            ProgressRing(completed = uiState.doneCount, total = uiState.items.size)
+            Column {
+                Text(
+                    if (uiState.toCallCount == 1) "1 call left today" else "${uiState.toCallCount} calls left today",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    "Complete the call and we'll mark it as done, or swipe right to mark it done",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        if (uiState.pendingConfirmationCount > 0) {
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs)
+                    .clickable(onClick = onOpenConfirm),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Row(
+                    Modifier.padding(Spacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                ) {
+                    Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(
+                        if (uiState.pendingConfirmationCount == 1) "1 call needs confirmation" else "${uiState.pendingConfirmationCount} calls need confirmation",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        if (uiState.items.isEmpty()) {
+            EmptyState(
+                icon = Icons.Filled.CheckCircle,
+                title = "Nothing due today",
+                subtitle = "Schedule someone from the People tab to see them here.",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
             Text(
-                "See who you need to call today and keep track of completed calls.",
+                "Your most important calls appear first.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(start = Spacing.lg, end = Spacing.lg, top = 0.dp, bottom = Spacing.sm)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs)
             )
-
-            Row(
-                Modifier.fillMaxWidth().padding(Spacing.lg),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.lg)
-            ) {
-                ProgressRing(completed = uiState.doneCount, total = uiState.items.size)
-                Column {
-                    Text(
-                        if (uiState.toCallCount == 1) "1 call left today" else "${uiState.toCallCount} calls left today",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        "Complete the call and we'll mark it as done, or swipe right to mark it done",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            if (uiState.pendingConfirmationCount > 0) {
-                Card(
-                    Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs)
-                        .clickable(onClick = onOpenConfirm),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Row(
-                        Modifier.padding(Spacing.md),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-                    ) {
-                        Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
-                        Text(
-                            if (uiState.pendingConfirmationCount == 1) "1 call needs confirmation" else "${uiState.pendingConfirmationCount} calls need confirmation",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodyMedium
+            LazyColumn(contentPadding = PaddingValues(bottom = Spacing.xxl)) {
+                items(uiState.items, key = { it.schedule.id }) { item ->
+                    Column(Modifier.animateItem()) {
+                        TodaySwipeableRow(
+                            item = item,
+                            onMarkDone = { onMarkDone(item) }
                         )
+                        HorizontalDivider()
                     }
                 }
             }
+        }
+    }
+}
 
-            if (uiState.items.isEmpty()) {
-                EmptyState(
-                    icon = Icons.Filled.CheckCircle,
-                    title = "Nothing due today",
-                    subtitle = "Schedule someone from the People tab to see them here.",
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Text(
-                    "Your most important calls appear first.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs)
-                )
-                LazyColumn(contentPadding = PaddingValues(bottom = Spacing.xxl)) {
-                    items(uiState.items, key = { it.schedule.id }) { item ->
-                        Column(Modifier.animateItem()) {
-                            TodaySwipeableRow(
-                                item = item,
-                                onMarkDone = { viewModel.onMarkDone(item) }
-                            )
-                            HorizontalDivider()
-                        }
-                    }
-                }
+/**
+ * Mirrors [TodayContent]'s layout piece for piece - same intro, a ring the size of ProgressRing
+ * with the "calls left" title and hint beside it, the "most important" line, then rows built on
+ * the same ListItem as [TodayRow] - so content replaces it without the layout jumping.
+ */
+@Composable
+private fun TodaySkeleton(modifier: Modifier = Modifier) {
+    val color = rememberSkeletonColor()
+    Column(modifier) {
+        TodayIntro()
+
+        Row(
+            Modifier.fillMaxWidth().padding(Spacing.lg),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.lg)
+        ) {
+            Box(Modifier.size(72.dp).border(6.dp, color, CircleShape)) // ProgressRing's default size/stroke
+            Column {
+                SkeletonTextLine(color, width = 150.dp, lineHeight = 24.dp, barHeight = 16.dp) // titleMedium
+                SkeletonTextLine(color, width = 220.dp, lineHeight = 16.dp, barHeight = 10.dp) // bodySmall, 2 lines
+                SkeletonTextLine(color, width = 170.dp, lineHeight = 16.dp, barHeight = 10.dp)
             }
+        }
+
+        SkeletonTextLine(
+            color,
+            width = 200.dp,
+            lineHeight = 16.dp,
+            barHeight = 10.dp,
+            modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.xs)
+        )
+
+        // Varied name widths, so it reads as a list of different people rather than a pattern.
+        for (nameWidth in listOf(140.dp, 110.dp, 160.dp, 120.dp, 130.dp)) {
+            ListItem(
+                leadingContent = {
+                    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        SkeletonBlock(color, Modifier.size(28.dp), CircleShape) // status icon
+                    }
+                },
+                headlineContent = { SkeletonTextLine(color, width = nameWidth, lineHeight = 24.dp, barHeight = 14.dp) },
+                supportingContent = { SkeletonTextLine(color, width = 110.dp, lineHeight = 20.dp, barHeight = 12.dp) },
+                trailingContent = { SkeletonBlock(color, Modifier.width(76.dp).height(26.dp), RoundedCornerShape(999.dp)) } // RecurrenceChip
+            )
+            HorizontalDivider()
         }
     }
 }

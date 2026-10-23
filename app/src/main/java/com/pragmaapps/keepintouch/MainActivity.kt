@@ -1,5 +1,7 @@
 package com.pragmaapps.keepintouch
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,6 +12,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -48,6 +52,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -56,13 +65,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.ProcessLifecycleOwner
 import com.pragmaapps.keepintouch.data.notification.CallLogObserver
+import com.pragmaapps.keepintouch.data.notification.ContactsChangeObserver
 import com.pragmaapps.keepintouch.data.prefs.OnboardingPreferences
+import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.ui.navigation.Destination
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.navigation.Transitions
@@ -80,6 +86,7 @@ import com.pragmaapps.keepintouch.ui.screens.today.TodayScreen
 import com.pragmaapps.keepintouch.ui.theme.KeepInTouchTheme
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val ROUTE_ONBOARDING = "onboarding"
@@ -104,6 +111,11 @@ class MainActivity : ComponentActivity() {
     // catches up on any call log entry that arrived while READ_CALL_LOG had never been checked yet.
     @Inject lateinit var callLogObserver: CallLogObserver
 
+    // Same registration gap as callLogObserver, for READ_CONTACTS.
+    @Inject lateinit var contactsChangeObserver: ContactsChangeObserver
+
+    @Inject lateinit var syncContacts: SyncContactsUseCase
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -118,6 +130,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         callLogObserver.register()
+        contactsChangeObserver.register()
+        // Picks up contact renames made while the app was closed and the observer wasn't running
+        // (e.g. the listener service isn't enabled), before any screen shows a stale name.
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+            lifecycleScope.launch { syncContacts() }
+        }
     }
 }
 

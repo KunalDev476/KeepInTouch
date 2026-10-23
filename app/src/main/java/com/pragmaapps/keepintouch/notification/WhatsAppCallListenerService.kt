@@ -7,6 +7,7 @@ import android.telecom.TelecomManager
 import com.pragmaapps.keepintouch.data.logging.AppLogger
 import com.pragmaapps.keepintouch.data.notification.CallEpisodeProcessor
 import com.pragmaapps.keepintouch.data.notification.CallLogObserver
+import com.pragmaapps.keepintouch.data.notification.ContactsChangeObserver
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,7 @@ class WhatsAppCallListenerService : NotificationListenerService() {
 
     @Inject lateinit var processor: CallEpisodeProcessor
     @Inject lateinit var callLogObserver: CallLogObserver
+    @Inject lateinit var contactsChangeObserver: ContactsChangeObserver
 
     private lateinit var scope: CoroutineScope
     private var defaultDialerPackage: String? = null
@@ -57,6 +59,7 @@ class WhatsAppCallListenerService : NotificationListenerService() {
         resolvedDialerPackage = defaultDialerPackage
         AppLogger.i(TAG, "Notification listener connected; default dialer package=$defaultDialerPackage")
         callLogObserver.register()
+        contactsChangeObserver.register()
     }
 
     override fun onListenerDisconnected() {
@@ -64,6 +67,7 @@ class WhatsAppCallListenerService : NotificationListenerService() {
         isConnected = false
         AppLogger.i(TAG, "Notification listener disconnected")
         callLogObserver.unregister()
+        contactsChangeObserver.unregister()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -110,6 +114,7 @@ class WhatsAppCallListenerService : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         callLogObserver.unregister()
+        contactsChangeObserver.unregister()
         scope.cancel()
     }
 
