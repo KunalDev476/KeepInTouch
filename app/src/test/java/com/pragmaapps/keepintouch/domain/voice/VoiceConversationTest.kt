@@ -29,14 +29,24 @@ class VoiceConversationTest {
     private class FakeBackend(
         val contactList: List<Contact>,
         val existing: MutableList<Schedule> = mutableListOf(),
-        var notificationsBlocked: Boolean = false
+        var notificationsBlocked: Boolean = false,
+        var storedIntroDone: Boolean = true,
+        var storedHonorific: Honorific = Honorific.NEUTRAL
     ) : VoiceScheduleBackend {
         val saved = mutableListOf<ScheduleRequest>()
         override suspend fun contacts() = contactList
         override suspend fun activeSchedulesFor(contact: Contact) = existing.filter { it.contactLookupKey == contact.lookupKey }
         override suspend fun save(request: ScheduleRequest): SaveOutcome { saved += request; return SaveOutcome.CREATED }
         override fun notificationsBlocked() = notificationsBlocked
+        override fun introDone() = storedIntroDone
+        override fun markIntroDone() { storedIntroDone = true }
+        override fun honorific() = storedHonorific
+        override fun setHonorific(honorific: Honorific) { storedHonorific = honorific }
     }
+
+    private val neutralGreetings = setOf(
+        VoicePrompt.WAKE_GREET_NEUTRAL_1, VoicePrompt.WAKE_GREET_NEUTRAL_2, VoicePrompt.WAKE_GREET_NEUTRAL_3
+    )
 
     private val rahul = contact(1, "Rahul Sharma")
     private val contacts = listOf(
@@ -71,7 +81,7 @@ class VoiceConversationTest {
         val backend = FakeBackend(contacts)
         val c = conversation(backend)
 
-        assertEquals(listOf(VoicePrompt.WAKE_ACK), c.onWake("").prompts)
+        assertTrue(c.onWake("").prompts.single() in neutralGreetings)
         assertEquals(listOf(VoicePrompt.CONTACT_MULTIPLE), c.onSpeech(listOf("Rahul")).prompts)
         assertEquals(listOf(VoicePrompt.ASK_TYPE), c.onSpeech(listOf("pehla")).prompts)
         assertEquals(listOf(VoicePrompt.ASK_DATE), c.onSpeech(listOf("ek baar")).prompts)
@@ -189,7 +199,7 @@ class VoiceConversationTest {
         c.onSpeech(listOf("koi time nahi"))
         assertEquals(VoiceConversation.Step.CONFIRM_SUMMARY, c.step)
         assertEquals(listOf(VoicePrompt.EDIT_SUMMARY), c.onSpeech(listOf("nahi")).prompts)
-        assertEquals(listOf(VoicePrompt.SUMMARY_CONFIRM), c.onSpeech(listOf("shaam 5 baje")).prompts)
+        assertEquals(listOf(VoicePrompt.EDIT_DONE, VoicePrompt.SUMMARY_CONFIRM), c.onSpeech(listOf("shaam 5 baje")).prompts)
         val summary = c.items.filterIsInstance<ChatItem.Summary>().last().summary
         assertEquals(17 * 60, summary.startMinutes)
         assertEquals(listOf(DayOfWeek.MONDAY), summary.weekdays)
@@ -228,18 +238,18 @@ class VoiceConversationTest {
         val first = c.onWake(
             "amar sir ke liye bna do shaam ke 6 bje aur mummy ke liye bna do shaam ke 8 bje dono schdule rojana repeat honge"
         )
-        assertEquals(listOf(VoicePrompt.SUMMARY_CONFIRM), first.prompts)
+        assertEquals(listOf(VoicePrompt.MULTI_DETECTED, VoicePrompt.SUMMARY_CONFIRM), first.prompts)
         assertEquals("Amar Sir", lastSummary(c).contactName)
         assertEquals(Recurrence.DAILY, lastSummary(c).recurrence)
         assertEquals(18 * 60, lastSummary(c).startMinutes)
 
         val second = c.onSpeech(listOf("haan"))
-        assertEquals(listOf(VoicePrompt.SAVED_ONE, VoicePrompt.SUMMARY_CONFIRM), second.prompts)
+        assertEquals(listOf(VoicePrompt.SAVED_ONE, VoicePrompt.MULTI_NEXT, VoicePrompt.SUMMARY_CONFIRM), second.prompts)
         assertEquals("Mummy", lastSummary(c).contactName)
         assertEquals(Recurrence.DAILY, lastSummary(c).recurrence)
         assertEquals(20 * 60, lastSummary(c).startMinutes)
 
-        assertEquals(listOf(VoicePrompt.SAVED_ONE, VoicePrompt.ASK_ANOTHER), c.onSpeech(listOf("haan")).prompts)
+        assertEquals(listOf(VoicePrompt.MULTI_ALL_DONE, VoicePrompt.ASK_ANOTHER), c.onSpeech(listOf("haan")).prompts)
         assertEquals(listOf("Amar Sir", "Mummy"), backend.saved.map { it.contact.displayName })
         assertEquals(listOf(18 * 60, 20 * 60), backend.saved.map { it.preferredTimeMinutes })
     }
@@ -295,7 +305,128 @@ class VoiceConversationTest {
     fun `wrong contact tap asks for the name again`() = runTest {
         val c = conversation(FakeBackend(contacts))
         c.onWake("Amit roz")
-        assertEquals(listOf(VoicePrompt.CONTACT_NO_NAME), c.onWrongContactTapped().prompts)
+        assertEquals(listOf(VoicePrompt.WRONG_CONTACT_ACK), c.onWrongContactTapped().prompts)
         assertEquals(VoiceConversation.Step.ASK_CONTACT, c.step)
+    }
+
+    @Test
+    fun `first conversation asks the name and greets with the guessed honorific`() = runTest {
+        val backend = FakeBackend(contacts, storedIntroDone = false)
+        val c = conversation(backend)
+        assertEquals(listOf(VoicePrompt.INTRO_ASK_NAME), c.onWake("").prompts)
+        assertEquals(listOf(VoicePrompt.INTRO_WELCOME_MAAM), c.onSpeech(listOf("mera naam Priya hai")).prompts)
+        assertEquals(Honorific.MAAM, backend.storedHonorific)
+        assertTrue(backend.storedIntroDone)
+        // Straight on into scheduling.
+        assertEquals(listOf(VoicePrompt.ASK_TYPE), c.onSpeech(listOf("Amit")).prompts)
+    }
+
+    @Test
+    fun `unknown or unisex names get no honorific and skipping is fine`() = runTest {
+        val unknown = FakeBackend(contacts, storedIntroDone = false)
+        conversation(unknown).apply { onWake(""); assertEquals(listOf(VoicePrompt.INTRO_WELCOME_NEUTRAL), onSpeech(listOf("Kiran")).prompts) }
+        assertEquals(Honorific.NEUTRAL, unknown.storedHonorific)
+
+        val skipped = FakeBackend(contacts, storedIntroDone = false)
+        conversation(skipped).apply { onWake(""); assertEquals(listOf(VoicePrompt.INTRO_NAME_SKIPPED), onSpeech(listOf("naam nahi batana")).prompts) }
+        assertTrue(skipped.storedIntroDone)
+    }
+
+    @Test
+    fun `returning user gets a greeting for their honorific, never the same twice in a row`() = runTest {
+        val backend = FakeBackend(contacts, storedHonorific = Honorific.SIR)
+        val c = conversation(backend)
+        val sirGreetings = setOf(VoicePrompt.WAKE_GREET_SIR_1, VoicePrompt.WAKE_GREET_SIR_2, VoicePrompt.WAKE_GREET_SIR_3)
+        var previous: VoicePrompt? = null
+        repeat(6) {
+            val greeting = c.onWake("").prompts.single()
+            assertTrue(greeting in sirGreetings)
+            assertTrue(greeting != previous)
+            previous = greeting
+            c.onSpeech(listOf("rehne do"))
+        }
+    }
+
+    @Test
+    fun `a command with the wake word skips the greeting`() = runTest {
+        val c = conversation(FakeBackend(contacts, storedIntroDone = false))
+        assertEquals(listOf(VoicePrompt.ASK_TYPE), c.onWake("Amit ke liye schedule").prompts)
+    }
+
+    @Test
+    fun `honorific correction apologises, remembers and repeats the pending question`() = runTest {
+        val backend = FakeBackend(contacts, storedHonorific = Honorific.SIR)
+        val c = conversation(backend)
+        c.onWake("Amit")
+        assertEquals(listOf(VoicePrompt.HONORIFIC_FIX_MAAM, VoicePrompt.ASK_TYPE), c.onSpeech(listOf("main sir nahi madam hoon")).prompts)
+        assertEquals(Honorific.MAAM, backend.storedHonorific)
+        assertEquals(VoiceConversation.Step.ASK_TYPE, c.step)
+
+        assertEquals(listOf(VoicePrompt.HONORIFIC_FIX_NEUTRAL, VoicePrompt.ASK_TYPE), c.onSpeech(listOf("sir madam mat bolo")).prompts)
+        assertEquals(Honorific.NEUTRAL, backend.storedHonorific)
+
+        assertEquals(listOf(VoicePrompt.HONORIFIC_CHANGE_ACK), c.onSpeech(listOf("mujhe kuch aur bulao")).prompts)
+        assertEquals(listOf(VoicePrompt.HONORIFIC_FIX_SIR, VoicePrompt.ASK_TYPE), c.onSpeech(listOf("sir")).prompts)
+        assertEquals(Honorific.SIR, backend.storedHonorific)
+    }
+
+    @Test
+    fun `small talk before a contact uses the contact asking lines`() = runTest {
+        val c = conversation(FakeBackend(contacts))
+        c.onWake("")
+        val howAreYou = c.onSpeech(listOf("kaise ho")).prompts.single()
+        assertTrue(howAreYou.name.startsWith("SMALLTALK_HOW_ARE_YOU"))
+        assertEquals(listOf(VoicePrompt.SMALLTALK_ARE_YOU_THERE), c.onSpeech(listOf("sun rahe ho")).prompts)
+        assertEquals(VoicePrompt.EXAMPLE_HINT, c.onSpeech(listOf("kya bakwas hai")).prompts.last())
+    }
+
+    @Test
+    fun `small talk mid flow answers then repeats the pending question`() = runTest {
+        val c = conversation(FakeBackend(contacts))
+        c.onWake("Amit roz")
+        assertEquals(VoiceConversation.Step.ASK_TIME, c.step)
+        assertEquals(listOf(VoicePrompt.SMALLTALK_REPEAT, VoicePrompt.ASK_TIME), c.onSpeech(listOf("kaise ho")).prompts)
+        assertEquals(listOf(VoicePrompt.SMALLTALK_CALL_NOW, VoicePrompt.ASK_TIME), c.onSpeech(listOf("abhi call lagao")).prompts)
+        assertEquals(listOf(VoicePrompt.SMALLTALK_THANKS_3, VoicePrompt.ASK_TIME), c.onSpeech(listOf("thank you")).prompts)
+        assertEquals(listOf(VoicePrompt.SMALLTALK_USER_SORRY), c.onSpeech(listOf("sorry")).prompts)
+        // And the flow still works afterwards.
+        assertEquals(listOf(VoicePrompt.SUMMARY_CONFIRM), c.onSpeech(listOf("shaam 7 baje")).prompts)
+    }
+
+    @Test
+    fun `scheduling commands are never mistaken for small talk`() = runTest {
+        val c = conversation(FakeBackend(contacts))
+        c.onWake("")
+        assertEquals(listOf(VoicePrompt.ASK_TIME), c.onSpeech(listOf("Amit ko roz call karo")).prompts)
+    }
+
+    @Test
+    fun `thanks or bye at the end closes the conversation`() = runTest {
+        val c = conversation(FakeBackend(contacts))
+        c.onWake("Neha roz koi time nahi")
+        c.onSpeech(listOf("haan"))
+        val reply = c.onSpeech(listOf("thank you"))
+        assertTrue(reply.prompts.single() in setOf(VoicePrompt.SMALLTALK_THANKS_1, VoicePrompt.SMALLTALK_THANKS_2))
+        assertFalse(reply.listen)
+        assertEquals(VoiceConversation.Step.WAIT_WAKE, c.step)
+    }
+
+    @Test
+    fun `skipping a contact in a multi-contact request moves on`() = runTest {
+        val existing = Schedule(
+            id = 9, contactLookupKey = "k5", displayNameSnapshot = "Amar Sir", normalizedNameSnapshot = "amar sir",
+            numberSnapshot = null, recurrence = Recurrence.MONTHLY, startDate = 0, nextDueDate = 0, active = true,
+            note = null, createdAt = 0
+        )
+        val c = conversation(FakeBackend(contacts, existing = mutableListOf(existing)))
+        assertEquals(
+            listOf(VoicePrompt.MULTI_DETECTED, VoicePrompt.CONTACT_HAS_SCHEDULE),
+            c.onWake("amar sir aur mummy dono ke liye roz shaam 6 baje").prompts
+        )
+        assertEquals(
+            listOf(VoicePrompt.CONTACT_SKIPPED, VoicePrompt.MULTI_NEXT, VoicePrompt.SUMMARY_CONFIRM),
+            c.onSpeech(listOf("nahi")).prompts
+        )
+        assertEquals("Mummy", lastSummary(c).contactName)
     }
 }

@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pragmaapps.keepintouch.BuildConfig
 import com.pragmaapps.keepintouch.data.logging.AppAnalytics
+import com.pragmaapps.keepintouch.data.prefs.VoiceProfilePreferences
+import com.pragmaapps.keepintouch.domain.voice.Honorific
 import com.pragmaapps.keepintouch.data.voice.SpeechListener
 import com.pragmaapps.keepintouch.data.voice.VoicePromptPlayer
 import com.pragmaapps.keepintouch.domain.model.Contact
@@ -74,7 +76,8 @@ class VoiceScheduleViewModel @Inject constructor(
     private val contactRepository: ContactRepository,
     private val scheduleRepository: ScheduleRepository,
     private val createSchedule: CreateScheduleUseCase,
-    private val syncContacts: SyncContactsUseCase
+    private val syncContacts: SyncContactsUseCase,
+    private val voiceProfile: VoiceProfilePreferences
 ) : ViewModel() {
 
     private val wakeWord = WakeWord(BuildConfig.WAKE_WORD)
@@ -113,6 +116,11 @@ class VoiceScheduleViewModel @Inject constructor(
             }
 
         override fun notificationsBlocked(): Boolean = !granted(Manifest.permission.POST_NOTIFICATIONS)
+
+        override fun introDone(): Boolean = voiceProfile.introDone
+        override fun markIntroDone() = voiceProfile.markIntroDone()
+        override fun honorific(): Honorific = voiceProfile.honorific
+        override fun setHonorific(honorific: Honorific) = voiceProfile.setHonorific(honorific)
     }
 
     private val conversation = VoiceConversation(backend)

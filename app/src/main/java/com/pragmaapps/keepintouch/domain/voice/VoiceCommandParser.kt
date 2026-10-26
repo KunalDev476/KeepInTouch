@@ -70,8 +70,20 @@ data class ParsedCommand(
     /** Where "dono / sab ke liye" starts - everything from here on applies to every contact named. */
     val sharedFrom: Int? = null,
     /** True when anything schedule-related was said (frequency, days, date or time). */
-    val hasScheduleDetails: Boolean = false
+    val hasScheduleDetails: Boolean = false,
+    val smallTalk: SmallTalk? = null,
+    val honorificRequest: HonorificRequest? = null,
+    /** A bare "sir" / "madam" anywhere - the answer to "how should I address you?". */
+    val honorificWord: Honorific? = null,
+    /** "Naam nahi batana" - the user would rather not give a name. */
+    val skipName: Boolean = false
 )
+
+/** Chit-chat that isn't part of building a schedule - answered, then the pending question is repeated. */
+enum class SmallTalk { HOW_ARE_YOU, THANKS, WHO_ARE_YOU, HELP, PRAISE, OFF_TOPIC, BYE, ARE_YOU_THERE, REPEAT, CALL_NOW, SORRY, FRUSTRATED }
+
+/** "Main madam hoon", "sir mat bolo", "mujhe kuch aur bulao". */
+enum class HonorificRequest { SIR, MAAM, NEUTRAL, CHANGE }
 
 /**
  * Rule-based Hinglish understanding for voice scheduling - no model, no network. Every keyword
@@ -216,6 +228,79 @@ object VoiceCommandParser {
         "dono", "donon", "dono ke liye", "both", "sab", "sabhi", "sabke liye", "all", "दोनों", "दोनो", "सब", "सभी", "सबके"
     )
 
+    private val SMALL_TALK: List<Pair<SmallTalk, Vocabulary>> = listOf(
+        SmallTalk.FRUSTRATED to Vocabulary(
+            "samajh nahi aata", "kuch samajh nahi aata", "kya bakwas", "bakwas", "bekaar", "bekar", "pagal", "useless",
+            "stupid", "dimag kharab", "समझ नहीं आता", "बकवास", "बेकार", "पागल", "दिमाग खराब"
+        ),
+        SmallTalk.REPEAT to Vocabulary(
+            "phir se bolo", "fir se bolo", "phir se boliye", "dobara bolo", "dobara boliye", "kya kaha", "kya bola",
+            "samajh nahi aaya", "repeat karo", "say again", "फिर से बोलो", "फिर से बोलिए", "दोबारा बोलो", "क्या कहा",
+            "क्या बोला", "समझ नहीं आया"
+        ),
+        SmallTalk.CALL_NOW to Vocabulary(
+            "call karo", "call lagao", "call laga do", "phone lagao", "phone laga do", "phone karo", "abhi call",
+            "call kar do", "dial karo", "कॉल करो", "कॉल लगाओ", "कॉल लगा दो", "फोन लगाओ", "फ़ोन लगाओ", "फोन करो", "अभी कॉल"
+        ),
+        SmallTalk.SORRY to Vocabulary("sorry", "maaf karna", "maaf kijiye", "galti ho gayi", "सॉरी", "माफ़ करना", "माफ करना", "गलती हो गई"),
+        SmallTalk.HOW_ARE_YOU to Vocabulary(
+            "kaise ho", "kaise hain", "kaise hai", "kaisa hai", "kya haal", "kya haal hai", "how are you", "kaise ho aap",
+            "कैसे हो", "कैसे हैं", "कैसा है", "क्या हाल", "हाउ आर यू"
+        ),
+        SmallTalk.WHO_ARE_YOU to Vocabulary("kaun ho", "tum kaun", "aap kaun", "who are you", "कौन हो", "आप कौन", "तुम कौन"),
+        SmallTalk.HELP to Vocabulary(
+            "kya kar sakte", "kya karte ho", "help", "madad", "kaise use", "kaise bolun", "kya bolun", "what can you do",
+            "क्या कर सकते", "क्या करते हो", "हेल्प", "मदद", "कैसे बोलूं", "क्या बोलूं"
+        ),
+        SmallTalk.THANKS to Vocabulary(
+            "thank you", "thanks", "thank u", "shukriya", "dhanyavad", "dhanyawad", "थैंक यू", "थैंक्स", "शुक्रिया", "धन्यवाद"
+        ),
+        SmallTalk.PRAISE to Vocabulary(
+            "wah", "waah", "badhiya", "shabash", "great", "awesome", "nice", "very good", "good job", "zabardast", "mast",
+            "bahut achhe", "वाह", "बढ़िया", "शाबाश", "ज़बरदस्त", "जबरदस्त", "बहुत अच्छे"
+        ),
+        SmallTalk.BYE to Vocabulary(
+            "bye", "bye bye", "goodbye", "good bye", "alvida", "baad mein", "chalo baad", "tata", "good night",
+            "बाय", "अलविदा", "बाद में", "टाटा", "गुड बाय", "गुड नाइट"
+        ),
+        SmallTalk.OFF_TOPIC to Vocabulary(
+            "mausam", "weather", "gaana", "gana", "song", "music", "joke", "chutkula", "news", "khabar", "cricket", "score",
+            "मौसम", "गाना", "जोक", "चुटकुला", "न्यूज़", "न्यूज", "खबर", "क्रिकेट"
+        ),
+        SmallTalk.ARE_YOU_THERE to Vocabulary(
+            "sun rahe ho", "sun rahe hain", "suno", "ho kya", "are you there", "hello", "hallo", "सुन रहे हो", "सुन रहे हैं",
+            "सुनो", "हेलो", "हैलो"
+        )
+    )
+
+    // Deliberately not in KEYWORD_VOCABULARIES: "sir" is also part of contact names ("Amar Sir").
+    private val HONORIFIC_NEUTRAL = Vocabulary(
+        "sir mat bolo", "madam mat bolo", "maam mat bolo", "sir madam mat bolo", "sir mat kaho", "madam mat kaho",
+        "naam se bulao", "naam se bulaiye", "dont call me sir", "dont call me madam", "kuch mat bolo",
+        "सर मत बोलो", "मैडम मत बोलो", "मैम मत बोलो", "सर मैडम मत बोलो", "नाम से बुलाओ", "नाम से बुलाइए"
+    )
+    private val HONORIFIC_MAAM = Vocabulary(
+        "main madam hoon", "main maam hoon", "main mam hoon", "madam bolo", "maam bolo", "madam boliye", "maam boliye",
+        "madam kaho", "mujhe madam", "mujhe maam", "sir nahi madam", "sir nahi maam", "sir nahin madam",
+        "main ladki hoon", "main aurat hoon", "मैं मैडम हूं", "मैं मैडम हूँ", "मैं मैम हूं", "मैडम बोलो", "मैम बोलो",
+        "मैडम बोलिए", "मुझे मैडम", "सर नहीं मैडम", "सर नहीं मैम", "मैं लड़की हूं", "मैं लड़की हूँ"
+    )
+    private val HONORIFIC_SIR = Vocabulary(
+        "main sir hoon", "sir bolo", "sir boliye", "sir kaho", "mujhe sir", "madam nahi sir", "maam nahi sir",
+        "main ladka hoon", "main aadmi hoon", "मैं सर हूं", "मैं सर हूँ", "सर बोलो", "सर बोलिए", "मुझे सर", "मैडम नहीं सर",
+        "मैम नहीं सर", "मैं लड़का हूं", "मैं लड़का हूँ"
+    )
+    private val HONORIFIC_CHANGE = Vocabulary(
+        "kuch aur bulao", "kuch aur bulaiye", "mujhe kaise bulate ho", "bulane ka tarika badlo", "kuch aur bolo mujhe",
+        "मुझे कुछ और बुलाओ", "कुछ और बुलाओ", "कुछ और बुलाइए"
+    )
+    private val SIR_WORD = Vocabulary("sir", "सर")
+    private val MAAM_WORD = Vocabulary("madam", "maam", "mam", "mem", "ma am", "मैडम", "मैम")
+    private val SKIP_NAME = Vocabulary(
+        "nahi batana", "nahi bataunga", "nahi bataungi", "naam nahi", "skip", "skip karo", "chhodo", "rehne do",
+        "नहीं बताना", "नहीं बताऊंगा", "नहीं बताऊंगी", "नाम नहीं", "स्किप", "छोड़ो", "रहने दो"
+    )
+
     /** Small words allowed between a value and the "nahi" that corrects it ("din me nhi", "9 bje nhi"). */
     private val CONNECTOR = Vocabulary("me", "mein", "ko", "ke", "ki", "pe", "par", "wala", "waala", "wali", "में", "को", "के", "की", "पे", "पर", "वाला")
 
@@ -232,22 +317,23 @@ object VoiceCommandParser {
         "rakh", "rakhdo", "dena", "de", "dijiye", "i", "want", "need", "my", "baje", "beech", "bich", "between",
         "around", "lagbhag", "har", "every", "pe", "par", "on", "at", "din", "time", "timing", "jo", "kre", "kare",
         "karein", "karen", "wo", "woh", "ye", "yeh", "iske", "uske", "inke", "unke", "sath", "saath", "maine",
-        "mene", "bola", "boli", "kaha", "lagao", "laga", "lagado", "dalo", "daal",
+        "mene", "bola", "boli", "kaha", "lagao", "laga", "lagado", "dalo", "daal", "bulao", "bulaiye", "bula",
+        "kaho", "kahiye", "kahkar", "bolo", "boliye", "name", "am", "its",
         "के", "की", "का", "को", "क्या", "लिए", "लिये", "से", "में", "मैं", "मुझे", "मेरा", "मेरी", "मेरे", "आप",
         "शेड्यूल", "शेड्यूल्ड", "बनाना", "बनाओ", "बना", "बनादो", "बनाइए", "बनाइये", "बनाएं", "बनाने", "करना",
         "करनी", "करने", "करो", "कर", "कॉल", "फोन", "फ़ोन", "बात", "है", "हैं", "हो", "होगा", "होगी", "होंगे",
         "था", "थी", "नया", "रिमाइंडर", "याद", "भी", "ही", "जी", "वाला", "वाले", "और", "या", "इसको", "उसको",
         "उनको", "इनको", "उनसे", "चाहता", "चाहती", "चाहिए", "हूं", "हूँ", "रखना", "रखो", "रख", "देना", "दे",
         "दीजिए", "बीच", "लगभग", "हर", "पे", "पर", "जो", "करे", "करें", "वो", "ये", "यह", "इसके", "उसके", "साथ",
-        "मैंने", "मेने", "बोला", "कहा", "लगा", "लगाओ"
+        "मैंने", "मेने", "बोला", "कहा", "लगा", "लगाओ", "बुलाओ", "बुलाइए", "कहो", "कहिए", "बोलो", "बोलिए"
     )
 
     private val KEYWORD_VOCABULARIES: List<Vocabulary> by lazy {
         listOf(
             YES, NO, NA, CANCEL, ONE_TIME, REPEAT, DAILY, WEEKLY, BIWEEKLY, MONTHLY, WEEK_WORD, MONTH_WORD,
             DAY_COUNT_UNIT, WEEKEND, WORKING_DAYS, TODAY, TOMORROW, DAY_AFTER, DATE_WORD, BAJE, SAADHE, SAVA, PAUNE,
-            DEDH, DHAI, NO_TIME, CONTACT_WORDS, TIME_WORDS, DAYS_WORDS, WRONG_CONTACT, SAID_EARLIER, SHARED, FILLER
-        ) + DAYS.values + PERIODS.values + NUMBER_WORDS.map { it.first } + ORDINALS.map { it.first }
+            DEDH, DHAI, NO_TIME, CONTACT_WORDS, TIME_WORDS, DAYS_WORDS, WRONG_CONTACT, SAID_EARLIER, SHARED, SKIP_NAME, FILLER
+        ) + SMALL_TALK.map { it.second } + DAYS.values + PERIODS.values + NUMBER_WORDS.map { it.first } + ORDINALS.map { it.first }
     }
 
     private val CLOCK_REGEX = Regex("^(\\d{1,2})[:.](\\d{2})$")
@@ -336,7 +422,21 @@ object VoiceCommandParser {
             nameRuns = nameRuns,
             sharedFrom = SHARED.findAll(utterance).firstOrNull()?.first,
             hasScheduleDetails = effectiveRecurrence != null || weekdays.isNotEmpty() || date != null ||
-                times.isNotEmpty() || oneTimeSaid || dayCount || loosePeriod != null || NO_TIME.occursIn(utterance)
+                times.isNotEmpty() || oneTimeSaid || dayCount || loosePeriod != null || NO_TIME.occursIn(utterance),
+            smallTalk = SMALL_TALK.firstOrNull { (_, vocab) -> vocab.occursIn(utterance) }?.first,
+            honorificRequest = when {
+                HONORIFIC_NEUTRAL.occursIn(utterance) -> HonorificRequest.NEUTRAL
+                HONORIFIC_MAAM.occursIn(utterance) -> HonorificRequest.MAAM
+                HONORIFIC_SIR.occursIn(utterance) -> HonorificRequest.SIR
+                HONORIFIC_CHANGE.occursIn(utterance) -> HonorificRequest.CHANGE
+                else -> null
+            },
+            honorificWord = when {
+                MAAM_WORD.occursIn(utterance) -> Honorific.MAAM
+                SIR_WORD.occursIn(utterance) -> Honorific.SIR
+                else -> null
+            },
+            skipName = SKIP_NAME.occursIn(utterance)
         )
     }
 

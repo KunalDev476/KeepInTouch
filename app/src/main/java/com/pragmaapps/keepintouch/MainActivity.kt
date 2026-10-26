@@ -92,6 +92,7 @@ import com.pragmaapps.keepintouch.ui.screens.schedule.ScheduleSheet
 import com.pragmaapps.keepintouch.ui.screens.schedule.ScheduleSheetArgs
 import com.pragmaapps.keepintouch.ui.screens.settings.SettingsScreen
 import com.pragmaapps.keepintouch.ui.screens.today.TodayScreen
+import com.pragmaapps.keepintouch.ui.screens.voice.VoiceFeature
 import com.pragmaapps.keepintouch.ui.screens.voice.VoiceScheduleScreen
 import com.pragmaapps.keepintouch.ui.theme.KeepInTouchTheme
 import com.pragmaapps.keepintouch.ui.theme.Spacing
@@ -170,8 +171,9 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean, voiceIntroPreferences: V
     // alongside the main tabs rather than a one-off drill-down.
     val showBottomBar = currentRoute in Destination.bottomBarDestinations.map { it.route } || currentRoute == ROUTE_REMINDERS
     // Voice scheduling's entry point floats over the everyday screens - but not Settings or
-    // anything reached from it (App Logs, Call Logs, Reminders), onboarding, or itself.
-    val showVoiceButton = currentRoute in setOf(
+    // anything reached from it (App Logs, Call Logs, Reminders), onboarding, or itself - and only
+    // on Android versions voice scheduling supports at all.
+    val showVoiceButton = VoiceFeature.isSupported && currentRoute in setOf(
         Destination.Today.route, Destination.People.route, ROUTE_CONFIRM, ROUTE_CONTACT_DETAIL
     )
     // One-time "In Touch just got smarter" overlay pointing at the mic - only once onboarding is
@@ -358,7 +360,7 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean, voiceIntroPreferences: V
     }
 
     val introMicBounds = micBounds
-    if (!voiceIntroSeen && currentRoute == Destination.Today.route && introMicBounds != null) {
+    if (VoiceFeature.isSupported && !voiceIntroSeen && currentRoute == Destination.Today.route && introMicBounds != null) {
         VoiceIntroOverlay(
             micBounds = introMicBounds,
             wakeWord = BuildConfig.WAKE_WORD,

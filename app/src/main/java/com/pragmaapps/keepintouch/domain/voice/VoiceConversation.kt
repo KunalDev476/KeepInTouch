@@ -7,6 +7,7 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.random.Random
 
 /** One schedule the conversation wants created - one per spoken weekday for "Saturday aur Sunday". */
 data class ScheduleRequest(
@@ -26,6 +27,12 @@ interface VoiceScheduleBackend {
     suspend fun save(request: ScheduleRequest): SaveOutcome
     /** True when a timed schedule's reminder couldn't actually be shown (POST_NOTIFICATIONS missing). */
     fun notificationsBlocked(): Boolean
+
+    /** Whether the one-time "what should I call you?" introduction already happened. */
+    fun introDone(): Boolean = true
+    fun markIntroDone() {}
+    fun honorific(): Honorific = Honorific.NEUTRAL
+    fun setHonorific(honorific: Honorific) {}
 }
 
 /** Read-only description of the schedule being built, for the summary and success cards. */
@@ -89,11 +96,12 @@ data class Reply(val prompts: List<VoicePrompt>, val listen: Boolean, val endSes
 class VoiceConversation(
     private val backend: VoiceScheduleBackend,
     private val now: () -> Long = System::currentTimeMillis,
-    private val zone: () -> ZoneId = ZoneId::systemDefault
+    private val zone: () -> ZoneId = ZoneId::systemDefault,
+    private val random: Random = Random.Default
 ) {
     enum class Step {
-        WAIT_WAKE, ASK_CONTACT, PICK_CONTACT, CONFIRM_CONTACT, CONFIRM_EXTRA, ASK_TYPE, ASK_FREQUENCY,
-        ASK_WEEKDAYS, ASK_DATE, ASK_TIME, ASK_AM_PM, CONFIRM_SUMMARY, EDIT_SUMMARY, ASK_ANOTHER
+        WAIT_WAKE, ASK_NAME, ASK_HONORIFIC, ASK_CONTACT, PICK_CONTACT, CONFIRM_CONTACT, CONFIRM_EXTRA, ASK_TYPE,
+        ASK_FREQUENCY, ASK_WEEKDAYS, ASK_DATE, ASK_TIME, ASK_AM_PM, CONFIRM_SUMMARY, EDIT_SUMMARY, ASK_ANOTHER
     }
 
     private data class Draft(
@@ -124,9 +132,17 @@ class VoiceConversation(
     /** After "wrong contact", even an exact-looking match gets confirmed. */
     private var forceConfirm = false
     private var contactMisses = 0
+    private var noNameTurns = 0
     private var misses = 0
     private var silentTurns = 0
+    private var nameMisses = 0
     private var nextId = 0L
+    /** True while working through a multi-contact command, for the "all done" line at the end. */
+    private var inMultiRun = false
+    /** The last question asked, repeated after small talk or a honorific correction. */
+    private var lastQuestion: VoicePrompt? = null
+    private var lastGreeting: VoicePrompt? = null
+    private var stepBeforeHonorific: Step? = null
 
     val inConversation: Boolean get() = step != Step.WAIT_WAKE
 
@@ -141,11 +157,32 @@ class VoiceConversation(
             input = InputOptions.GrantContacts
             return say(VoicePrompt.CONTACTS_PERMISSION_REQUIRED, listen = false).copy(endSession = true)
         }
-        step = Step.ASK_CONTACT
         input = InputOptions.None
-        if (remainder.isBlank()) return say(VoicePrompt.WAKE_ACK)
-        return onSpeech(listOf(remainder))
+        // A command in the same breath goes straight to work - no greeting, no introduction yet.
+        if (remainder.isNotBlank()) {
+            step = Step.ASK_CONTACT
+            return onSpeech(listOf(remainder))
+        }
+        if (!backend.introDone()) {
+            step = Step.ASK_NAME
+            nameMisses = 0
+            return say(VoicePrompt.INTRO_ASK_NAME)
+        }
+        step = Step.ASK_CONTACT
+        return say(greeting())
     }
+
+    /** A random greeting for how this user likes to be addressed, never the same one twice in a row. */
+    private fun greeting(): VoicePrompt {
+        val pool = when (backend.honorific()) {
+            Honorific.SIR -> listOf(VoicePrompt.WAKE_GREET_SIR_1, VoicePrompt.WAKE_GREET_SIR_2, VoicePrompt.WAKE_GREET_SIR_3)
+            Honorific.MAAM -> listOf(VoicePrompt.WAKE_GREET_MAAM_1, VoicePrompt.WAKE_GREET_MAAM_2, VoicePrompt.WAKE_GREET_MAAM_3)
+            Honorific.NEUTRAL -> listOf(VoicePrompt.WAKE_GREET_NEUTRAL_1, VoicePrompt.WAKE_GREET_NEUTRAL_2, VoicePrompt.WAKE_GREET_NEUTRAL_3)
+        }
+        return pick(pool.filter { it != lastGreeting }.ifEmpty { pool }).also { lastGreeting = it }
+    }
+
+    private fun pick(options: List<VoicePrompt>): VoicePrompt = options[random.nextInt(options.size)]
 
     /** Contacts became readable (permission granted / synced) - pick up where [onWake] left off. */
     suspend fun onContactsAvailable(): Reply = onWake("")
@@ -243,22 +280,51 @@ class VoiceConversation(
     private var anyTimedSaved = false
 
     private val CONTACT_STEPS = setOf(Step.WAIT_WAKE, Step.ASK_CONTACT, Step.PICK_CONTACT, Step.CONFIRM_CONTACT, Step.ASK_ANOTHER)
+    private val YES_NO_STEPS = setOf(Step.CONFIRM_CONTACT, Step.CONFIRM_EXTRA, Step.CONFIRM_SUMMARY, Step.ASK_ANOTHER)
+
+    /** Lines that ask something - the one repeated after a small-talk detour. */
+    private val QUESTIONS = setOf(
+        VoicePrompt.CONTACT_NO_NAME, VoicePrompt.CONTACT_CONFIRM, VoicePrompt.CONTACT_MULTIPLE,
+        VoicePrompt.CONTACT_NOT_FOUND, VoicePrompt.CONTACT_NOT_FOUND_2, VoicePrompt.CONTACT_HAS_SCHEDULE,
+        VoicePrompt.WRONG_CONTACT_ACK, VoicePrompt.ASK_TYPE, VoicePrompt.ASK_FREQUENCY, VoicePrompt.ASK_WEEKDAYS,
+        VoicePrompt.WEEKDAYS_UNCLEAR, VoicePrompt.ASK_DATE, VoicePrompt.DATE_IN_PAST, VoicePrompt.ASK_TIME,
+        VoicePrompt.TIME_AM_PM, VoicePrompt.TIME_IN_PAST, VoicePrompt.TIME_WINDOW_INVALID, VoicePrompt.SUMMARY_CONFIRM,
+        VoicePrompt.EDIT_SUMMARY, VoicePrompt.ASK_ANOTHER
+    )
+    private val HOW_ARE_YOU = listOf(
+        VoicePrompt.SMALLTALK_HOW_ARE_YOU_1, VoicePrompt.SMALLTALK_HOW_ARE_YOU_2, VoicePrompt.SMALLTALK_HOW_ARE_YOU_3,
+        VoicePrompt.SMALLTALK_HOW_ARE_YOU_4, VoicePrompt.SMALLTALK_HOW_ARE_YOU_5, VoicePrompt.SMALLTALK_HOW_ARE_YOU_6
+    )
+    private val WHO_ARE_YOU = listOf(VoicePrompt.SMALLTALK_WHO_ARE_YOU_1, VoicePrompt.SMALLTALK_WHO_ARE_YOU_2)
+    private val HELP = listOf(VoicePrompt.SMALLTALK_HELP_1, VoicePrompt.SMALLTALK_HELP_2)
+    private val PRAISE = listOf(VoicePrompt.SMALLTALK_PRAISE_1, VoicePrompt.SMALLTALK_PRAISE_2)
+    private val OFF_TOPIC = listOf(
+        VoicePrompt.SMALLTALK_OFF_TOPIC_1, VoicePrompt.SMALLTALK_OFF_TOPIC_2, VoicePrompt.SMALLTALK_OFF_TOPIC_3
+    )
 
     private fun expectsTime() = step == Step.ASK_TIME || step == Step.ASK_AM_PM || step == Step.EDIT_SUMMARY
 
     private suspend fun handle(utterance: Utterance): Reply {
         val parsed = VoiceCommandParser.parse(utterance, bareNumbersAreTimes = expectsTime())
+        when (step) {
+            Step.ASK_NAME -> return handleName(utterance, parsed)
+            Step.ASK_HONORIFIC -> return handleHonorificAnswer(parsed)
+            else -> Unit
+        }
         if (parsed.cancel) {
             endConversation()
             return say(VoicePrompt.CANCELLED, listen = false)
         }
+        parsed.honorificRequest?.let { return handleHonorificRequest(it) }
+        if (isSmallTalk(parsed)) return handleSmallTalk(parsed.smallTalk!!)
         // "Ye galat contact hai, maine Amit bola tha" - at any point after a contact was picked.
         if (parsed.wrongContact && draft.contact != null && step !in CONTACT_STEPS) {
             return wrongContact(parsed.nameWords)
         }
 
         return when (step) {
-            Step.WAIT_WAKE -> Reply(emptyList(), listen = false)
+            // Handled above, before cancel/small talk.
+            Step.WAIT_WAKE, Step.ASK_NAME, Step.ASK_HONORIFIC -> Reply(emptyList(), listen = false)
             Step.ASK_CONTACT -> startCommand(utterance, parsed)
             Step.PICK_CONTACT -> {
                 val byOrdinal = parsed.ordinal?.let { candidates.getOrNull(it - 1) }
@@ -344,7 +410,7 @@ class VoiceConversation(
         Step.CONFIRM_EXTRA -> when {
             yes -> advance()
             // Skip just this contact and carry on with the rest of a multi-contact command.
-            pendingCommands.isNotEmpty() -> continueWithNextCommand(emptyList())
+            pendingCommands.isNotEmpty() -> continueWithNextCommand(spoken(listOf(VoicePrompt.CONTACT_SKIPPED)))
             else -> {
                 endConversation()
                 say(VoicePrompt.CANCELLED, listen = false)
@@ -369,6 +435,133 @@ class VoiceConversation(
         else -> say(VoicePrompt.NOT_UNDERSTOOD)
     }
 
+    // region Introduction, honorific and small talk
+
+    /**
+     * First conversation: "what should I call you?". The answer only picks sir/ma'am/neither (see
+     * [HonorificGuesser]) - the name itself isn't kept. A schedule command instead of a name skips
+     * the introduction for now and goes straight to work.
+     */
+    private suspend fun handleName(utterance: Utterance, parsed: ParsedCommand): Reply {
+        val stated = parsed.honorificRequest.toHonorific() ?: parsed.honorificWord
+        return when {
+            parsed.hasScheduleDetails -> {
+                step = Step.ASK_CONTACT
+                startCommand(utterance, parsed)
+            }
+            parsed.skipName || parsed.cancel || parsed.no -> finishIntro(null)
+            stated != null -> finishIntro(stated)
+            parsed.nameWords.isNotEmpty() -> finishIntro(HonorificGuesser.guess(parsed.nameWords))
+            ++nameMisses < 2 -> say(VoicePrompt.INTRO_NAME_NOT_CAUGHT)
+            else -> finishIntro(null)
+        }
+    }
+
+    /** [honorific] null = no name given - carry on without sir/ma'am. */
+    private fun finishIntro(honorific: Honorific?): Reply {
+        backend.markIntroDone()
+        honorific?.let { backend.setHonorific(it) }
+        step = Step.ASK_CONTACT
+        return say(
+            when (honorific) {
+                Honorific.SIR -> VoicePrompt.INTRO_WELCOME_SIR
+                Honorific.MAAM -> VoicePrompt.INTRO_WELCOME_MAAM
+                Honorific.NEUTRAL -> VoicePrompt.INTRO_WELCOME_NEUTRAL
+                null -> VoicePrompt.INTRO_NAME_SKIPPED
+            }
+        )
+    }
+
+    private fun HonorificRequest?.toHonorific(): Honorific? = when (this) {
+        HonorificRequest.SIR -> Honorific.SIR
+        HonorificRequest.MAAM -> Honorific.MAAM
+        HonorificRequest.NEUTRAL -> Honorific.NEUTRAL
+        HonorificRequest.CHANGE, null -> null
+    }
+
+    /** "Main madam hoon" / "sir mat bolo" at any point: apologise, remember, carry on where we were. */
+    private fun handleHonorificRequest(request: HonorificRequest): Reply {
+        val honorific = request.toHonorific()
+        if (honorific == null) {
+            stepBeforeHonorific = step
+            step = Step.ASK_HONORIFIC
+            return say(VoicePrompt.HONORIFIC_CHANGE_ACK)
+        }
+        return applyHonorific(honorific)
+    }
+
+    /** The answer to "how would you like to be addressed?" - anything unclear means neither. */
+    private fun handleHonorificAnswer(parsed: ParsedCommand): Reply {
+        step = stepBeforeHonorific ?: Step.ASK_CONTACT
+        stepBeforeHonorific = null
+        val honorific = parsed.honorificRequest.toHonorific() ?: parsed.honorificWord ?: Honorific.NEUTRAL
+        return applyHonorific(honorific)
+    }
+
+    private fun applyHonorific(honorific: Honorific): Reply {
+        backend.setHonorific(honorific)
+        backend.markIntroDone()
+        val fix = when (honorific) {
+            Honorific.SIR -> VoicePrompt.HONORIFIC_FIX_SIR
+            Honorific.MAAM -> VoicePrompt.HONORIFIC_FIX_MAAM
+            Honorific.NEUTRAL -> VoicePrompt.HONORIFIC_FIX_NEUTRAL
+        }
+        return say(listOf(fix, pendingQuestion()))
+    }
+
+    /**
+     * Small talk only counts when nothing else was said - "Rahul ko har Sunday call karo" is a
+     * command, not "call karo", and a "haan" at a yes/no question is an answer.
+     */
+    private fun isSmallTalk(parsed: ParsedCommand): Boolean {
+        val talk = parsed.smallTalk ?: return false
+        if (parsed.hasScheduleDetails || parsed.wrongContact) return false
+        if (VoiceContactMatcher.match(parsed.nameWords, cachedContacts).isNotEmpty()) return false
+        if (step in YES_NO_STEPS && (parsed.yes || (parsed.no && talk != SmallTalk.REPEAT && talk != SmallTalk.FRUSTRATED))) {
+            return false
+        }
+        return true
+    }
+
+    private fun handleSmallTalk(talk: SmallTalk): Reply {
+        // The how-are-you / are-you-there clips end with "which contact?", so they only fit before one is picked.
+        val beforeContact = step == Step.ASK_CONTACT
+        return when (talk) {
+            SmallTalk.HOW_ARE_YOU -> if (beforeContact) say(pick(HOW_ARE_YOU)) else repeatQuestion()
+            SmallTalk.ARE_YOU_THERE -> if (beforeContact) say(VoicePrompt.SMALLTALK_ARE_YOU_THERE) else repeatQuestion()
+            SmallTalk.THANKS -> if (step == Step.ASK_ANOTHER) {
+                endConversation()
+                say(pick(listOf(VoicePrompt.SMALLTALK_THANKS_1, VoicePrompt.SMALLTALK_THANKS_2)), listen = false)
+            } else {
+                say(listOf(VoicePrompt.SMALLTALK_THANKS_3, pendingQuestion()))
+            }
+            SmallTalk.WHO_ARE_YOU -> say(listOf(pick(WHO_ARE_YOU), pendingQuestion()))
+            SmallTalk.HELP -> say(listOf(pick(HELP), if (beforeContact) VoicePrompt.EXAMPLE_HINT else pendingQuestion()))
+            SmallTalk.PRAISE -> say(listOf(pick(PRAISE), pendingQuestion()))
+            SmallTalk.OFF_TOPIC -> say(listOf(pick(OFF_TOPIC), pendingQuestion()))
+            SmallTalk.BYE -> {
+                endConversation()
+                say(pick(listOf(VoicePrompt.SMALLTALK_BYE_1, VoicePrompt.SMALLTALK_BYE_2)), listen = false)
+            }
+            SmallTalk.REPEAT -> repeatQuestion()
+            SmallTalk.CALL_NOW -> say(listOf(VoicePrompt.SMALLTALK_CALL_NOW, pendingQuestion()))
+            SmallTalk.SORRY -> say(VoicePrompt.SMALLTALK_USER_SORRY)
+            SmallTalk.FRUSTRATED ->
+                say(listOf(VoicePrompt.SMALLTALK_FRUSTRATED, if (beforeContact) VoicePrompt.EXAMPLE_HINT else pendingQuestion()))
+        }
+    }
+
+    private fun repeatQuestion(): Reply = say(listOf(VoicePrompt.SMALLTALK_REPEAT, pendingQuestion()))
+
+    /** What to ask again after a detour - the question that's actually waiting for an answer. */
+    private fun pendingQuestion(): VoicePrompt = when (step) {
+        Step.ASK_NAME -> VoicePrompt.INTRO_ASK_NAME
+        Step.ASK_CONTACT, Step.WAIT_WAKE -> VoicePrompt.CONTACT_NO_NAME
+        else -> lastQuestion ?: VoicePrompt.CONTACT_NO_NAME
+    }
+
+    // endregion
+
     // region Contact
 
     /**
@@ -383,7 +576,10 @@ class VoiceConversation(
             return searchContacts(parsed.nameWords)
         }
         parts.drop(1).asReversed().forEach { pendingCommands.addFirst(it) }
-        return processCommand(parts.first())
+        inMultiRun = true
+        val lead = spoken(listOf(VoicePrompt.MULTI_DETECTED))
+        val reply = processCommand(parts.first())
+        return reply.copy(prompts = lead + reply.prompts)
     }
 
     private suspend fun processCommand(text: String): Reply {
@@ -417,8 +613,9 @@ class VoiceConversation(
         val next = pendingCommands.removeFirst()
         resetDraft()
         step = Step.ASK_CONTACT
+        val announced = lead + spoken(listOf(VoicePrompt.MULTI_NEXT))
         val reply = processCommand(next)
-        return reply.copy(prompts = lead + reply.prompts)
+        return reply.copy(prompts = announced + reply.prompts)
     }
 
     /** The picked contact is wrong - keep what was said about the schedule, find the right person. */
@@ -426,6 +623,11 @@ class VoiceConversation(
         forceConfirm = true
         draft = draft.copy(contact = null)
         candidates = emptyList()
+        if (nameWords.isEmpty()) {
+            step = Step.ASK_CONTACT
+            input = InputOptions.None
+            return say(VoicePrompt.WRONG_CONTACT_ACK)
+        }
         return searchContacts(nameWords)
     }
 
@@ -434,8 +636,11 @@ class VoiceConversation(
         if (cachedContacts.isEmpty()) cachedContacts = backend.contacts()
         if (nameWords.isEmpty()) {
             input = InputOptions.None
-            return say(VoicePrompt.CONTACT_NO_NAME)
+            // Twice without a name - show how a request sounds.
+            return if (++noNameTurns >= 2) say(listOf(VoicePrompt.CONTACT_NO_NAME, VoicePrompt.EXAMPLE_HINT))
+            else say(VoicePrompt.CONTACT_NO_NAME)
         }
+        noNameTurns = 0
         val result = VoiceContactMatcher.search(nameWords, cachedContacts)
         val matches = result.contacts
         return when {
@@ -582,7 +787,8 @@ class VoiceConversation(
                     draft = draft.copy(recurrence = null, oneTime = null, weekdays = emptySet(), date = null)
                 }
                 mergeSlots(parsed)
-                advance()
+                val lead = spoken(listOf(VoicePrompt.EDIT_DONE))
+                advance().let { it.copy(prompts = lead + it.prompts) }
             }
             parsed.mentionsTime -> {
                 draft = draft.copy(timeDecided = false, startMinutes = null, endMinutes = null, pendingTimes = emptyList())
@@ -725,9 +931,12 @@ class VoiceConversation(
                 return say(VoicePrompt.SAVE_FAILED)
             }
             created < fresh.size -> prompts += VoicePrompt.PARTIAL_SAVE_FAILED
+            // The last contact of a multi-contact request wraps the whole request up.
+            inMultiRun && pendingCommands.isEmpty() -> prompts += VoicePrompt.MULTI_ALL_DONE
             created == 1 -> prompts += VoicePrompt.SAVED_ONE
             else -> prompts += VoicePrompt.SAVED_MANY
         }
+        if (pendingCommands.isEmpty()) inMultiRun = false
         addItem { ChatItem.Success(it, summary(created)) }
         if (draft.startMinutes != null) anyTimedSaved = true
 
@@ -807,7 +1016,10 @@ class VoiceConversation(
 
     private fun endConversation() {
         pendingCommands.clear()
+        inMultiRun = false
         anyTimedSaved = false
+        lastQuestion = null
+        stepBeforeHonorific = null
         step = Step.WAIT_WAKE
         input = if (input == InputOptions.GrantContacts) input else InputOptions.None
         resetDraft()
@@ -818,14 +1030,17 @@ class VoiceConversation(
         forceConfirm = false
         candidates = emptyList()
         contactMisses = 0
+        noNameTurns = 0
         misses = 0
         dateInPast = false
     }
 
     private fun say(prompt: VoicePrompt, listen: Boolean = true): Reply = say(listOf(prompt), listen)
 
-    private fun say(prompts: List<VoicePrompt>, listen: Boolean = true): Reply =
-        Reply(spoken(prompts), listen = listen && step != Step.WAIT_WAKE)
+    private fun say(prompts: List<VoicePrompt>, listen: Boolean = true): Reply {
+        prompts.lastOrNull { it in QUESTIONS }?.let { lastQuestion = it }
+        return Reply(spoken(prompts), listen = listen && step != Step.WAIT_WAKE)
+    }
 
     /** Adds each line to the chat as it's queued, so the bubble shows up alongside the audio. */
     private fun spoken(prompts: List<VoicePrompt>): List<VoicePrompt> {

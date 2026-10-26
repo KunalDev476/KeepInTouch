@@ -66,6 +66,7 @@ import com.pragmaapps.keepintouch.ui.components.LoadingSkeleton
 import com.pragmaapps.keepintouch.ui.components.SegmentedControl
 import com.pragmaapps.keepintouch.ui.components.label
 import com.pragmaapps.keepintouch.ui.components.verticalScrollbar
+import com.pragmaapps.keepintouch.ui.screens.voice.VoiceFeature
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import com.pragmaapps.keepintouch.ui.theme.extendedColors
 
@@ -106,10 +107,10 @@ fun PeopleScreen(
             // Only once there's something to browse in Call Schedules - with zero schedules, the
             // segment's own EmptyState already tells you to switch to All contacts and tap +.
             if (uiState.segment == PeopleSegment.SCHEDULED && uiState.scheduledRows.isNotEmpty()) {
-                // Lifted above the app-wide voice mic button, which sits in this same corner.
+                // Lifted above the app-wide voice mic button, which sits in this same corner (where it's shown).
                 FloatingActionButton(
                     onClick = { viewModel.onSegmentChange(PeopleSegment.ALL) },
-                    modifier = Modifier.padding(bottom = 56.dp + Spacing.lg)
+                    modifier = if (VoiceFeature.isSupported) Modifier.padding(bottom = 56.dp + Spacing.lg) else Modifier
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Add someone to call")
                 }
