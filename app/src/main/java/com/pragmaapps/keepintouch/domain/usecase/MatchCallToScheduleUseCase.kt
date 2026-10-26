@@ -40,11 +40,18 @@ class MatchCallToScheduleUseCase @Inject constructor(
         val matches = activeSchedules.filter { schedule ->
             schedule.numberSnapshot?.let { PhoneNumberMatching.matches(it, rawNumber) } ?: false
         }
+        val sameContact = if (matches.size >= 2) pickForSingleContact(matches) else null
         return when {
             matches.size == 1 -> MatchOutcome.UniqueSchedule(
                 matches[0].id,
                 MatchConfidence.PHONE_NUMBER,
                 "The notification showed a phone number, not a name - matched the one active schedule with that saved number."
+            )
+            sameContact != null -> MatchOutcome.UniqueSchedule(
+                sameContact.id,
+                MatchConfidence.PHONE_NUMBER,
+                "The notification showed a phone number, not a name - it matches ${matches.size} active schedules, " +
+                    "all for the same contact; picked the one due soonest."
             )
             matches.size >= 2 -> MatchOutcome.DuplicateSchedules(
                 matches.map { it.id },
@@ -52,6 +59,19 @@ class MatchCallToScheduleUseCase @Inject constructor(
             )
             else -> MatchOutcome.NoMatch
         }
+    }
+
+    /**
+     * Several schedules for ONE contact (e.g. a weekly Saturday one and a weekly Sunday one) aren't
+     * an ambiguity worth asking about - it's the same person either way. The call goes to the one
+     * due soonest: an overdue/today one if there is one (the caller then fulfils it only if it's
+     * actually due - see ProcessFinalizedCallUseCase.tryFulfill), so a mid-week call never
+     * completes next Saturday's schedule early. Null when the schedules span different contacts,
+     * which still needs a human to pick.
+     */
+    private fun pickForSingleContact(schedules: List<Schedule>): Schedule? {
+        if (schedules.map { it.contactLookupKey }.distinct().size != 1) return null
+        return schedules.minByOrNull { it.nextDueDate }
     }
 
     private suspend fun evaluateAgainst(
@@ -69,6 +89,15 @@ class MatchCallToScheduleUseCase @Inject constructor(
             )
         }
         if (strongCandidates.size >= 2) {
+            pickForSingleContact(strongCandidates)?.let { schedule ->
+                val confidence = if (schedule.displayNameSnapshot == rawCallerName) MatchConfidence.EXACT else MatchConfidence.NORMALIZED
+                return MatchOutcome.UniqueSchedule(
+                    schedule.id,
+                    confidence,
+                    "Normalized caller name '$normalizedCaller' matches ${strongCandidates.size} active schedules, all for " +
+                        "the same contact - picked the one due soonest (${confidence.name})."
+                )
+            }
             return MatchOutcome.DuplicateSchedules(
                 strongCandidates.map { it.id },
                 "Normalized caller name '$normalizedCaller' matches ${strongCandidates.size} active schedules with the same name."

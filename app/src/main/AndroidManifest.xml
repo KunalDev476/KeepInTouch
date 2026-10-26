@@ -34,6 +34,13 @@
          WhatsApp itself is never in this log - its detection is unaffected either way. -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
 
+    <!-- Voice scheduling only (the floating mic -> voice screen): speech recognition while that
+         screen is open and listening - the on-device recognizer where the phone has a Hindi model,
+         otherwise the system recognizer with offline preferred (see SpeechListener). Requested the
+         moment the mic is first tapped, never at onboarding. This app never stores, logs or sends
+         what was heard. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- Deliberately NOT declared here: android.permission.INTERNET, READ_PHONE_STATE. None of
          this app's own code makes a network call or reads phone state - READ_PHONE_STATE would
          add nothing anyway (Android 12+ redacts caller info from telephony call-state callbacks
@@ -49,6 +56,14 @@
          reaches Firebase (categorical event names/params and non-identifying log breadcrumbs
          only - never contact names or phone numbers). -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+
+    <!-- Package visibility (Android 11+): without this, SpeechRecognizer can't see the system's
+         recognition service and reports speech recognition as unavailable. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".KeepInTouchApplication"

@@ -7,6 +7,7 @@ import com.pragmaapps.keepintouch.domain.model.Recurrence
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
+import com.pragmaapps.keepintouch.domain.usecase.CreateScheduleUseCase
 import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.domain.util.NameNormalizer
@@ -47,10 +48,10 @@ data class ScheduleSheetUiState(
 }
 
 /**
- * Two active schedules can never share a normalized name - a call notification only ever carries
- * a name, never a phone number, so a collision would make future calls for either person
- * unmatchable (see MatchCallToScheduleUseCase). Caught here, at creation time, instead of only
- * after an ambiguous call comes in.
+ * Two active schedules for two different contacts can never share a normalized name - a call
+ * notification only ever carries a name, never a phone number, so a collision would make future
+ * calls for either person unmatchable (see MatchCallToScheduleUseCase). Caught at creation time
+ * (see CreateScheduleUseCase), instead of only after an ambiguous call comes in.
  */
 data class NameCollisionInfo(
     val collidingWithScheduleName: String,
@@ -70,7 +71,8 @@ data class NameCollisionInfo(
 class ScheduleSheetViewModel @Inject constructor(
     private val contactRepository: ContactRepository,
     private val scheduleRepository: ScheduleRepository,
-    private val syncContacts: SyncContactsUseCase
+    private val syncContacts: SyncContactsUseCase,
+    private val createSchedule: CreateScheduleUseCase
 ) : ViewModel() {
 
     private var existingSchedule: Schedule? = null
@@ -170,29 +172,23 @@ class ScheduleSheetViewModel @Inject constructor(
                 return@launch
             }
 
-            val normalizedName = NameNormalizer.normalize(contact.displayName)
-            val colliding = scheduleRepository.findActiveByNormalizedName(normalizedName)
-            if (colliding.isNotEmpty()) {
-                _uiState.value = _uiState.value.copy(
-                    nameCollision = NameCollisionInfo(
-                        collidingWithScheduleName = colliding.first().displayNameSnapshot,
-                        renameInput = contact.displayName
-                    )
-                )
-                return@launch
-            }
-
-            scheduleRepository.createSchedule(
+            val result = createSchedule(
                 contact = contact,
                 recurrence = state.recurrence,
-                startDate = state.nextDueDate,
                 nextDueDate = state.nextDueDate,
                 note = state.note.ifBlank { null },
                 preferredTimeMinutes = state.preferredTimeMinutes,
-                isImportant = state.isImportant,
                 comfortableTimeEndMinutes = state.comfortableTimeEndMinutes
             )
-            _uiState.value = _uiState.value.copy(saved = true)
+            _uiState.value = when (result) {
+                is CreateScheduleUseCase.Result.Created -> _uiState.value.copy(saved = true)
+                is CreateScheduleUseCase.Result.NameCollision -> _uiState.value.copy(
+                    nameCollision = NameCollisionInfo(
+                        collidingWithScheduleName = result.collidingWith.displayNameSnapshot,
+                        renameInput = contact.displayName
+                    )
+                )
+            }
         }
     }
 

@@ -46,6 +46,13 @@ object AppAnalytics {
         log("onboarding_completed")
     }
 
+    /** Voice scheduling milestones, e.g. "wake", "saved", "cancelled" - never anything that was said. */
+    fun logVoiceScheduling(outcome: String) {
+        log("voice_scheduling") {
+            putString("outcome", outcome)
+        }
+    }
+
     /** [name] must be a valid Firebase Analytics event name: <=40 chars, alphanumeric/underscore, not a reserved prefix. */
     private inline fun log(name: String, params: Bundle.() -> Unit = {}) {
         val instance = analytics ?: return

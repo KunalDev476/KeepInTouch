@@ -33,7 +33,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,6 +54,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -68,7 +75,9 @@ import androidx.navigation.navArgument
 import com.pragmaapps.keepintouch.data.notification.CallLogObserver
 import com.pragmaapps.keepintouch.data.notification.ContactsChangeObserver
 import com.pragmaapps.keepintouch.data.prefs.OnboardingPreferences
+import com.pragmaapps.keepintouch.data.prefs.VoiceIntroPreferences
 import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
+import com.pragmaapps.keepintouch.ui.components.VoiceIntroOverlay
 import com.pragmaapps.keepintouch.ui.navigation.Destination
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.navigation.Transitions
@@ -83,6 +92,7 @@ import com.pragmaapps.keepintouch.ui.screens.schedule.ScheduleSheet
 import com.pragmaapps.keepintouch.ui.screens.schedule.ScheduleSheetArgs
 import com.pragmaapps.keepintouch.ui.screens.settings.SettingsScreen
 import com.pragmaapps.keepintouch.ui.screens.today.TodayScreen
+import com.pragmaapps.keepintouch.ui.screens.voice.VoiceScheduleScreen
 import com.pragmaapps.keepintouch.ui.theme.KeepInTouchTheme
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import dagger.hilt.android.AndroidEntryPoint
@@ -95,12 +105,15 @@ private const val ROUTE_APP_LOGS = "app_logs"
 private const val ROUTE_CALL_LOGS = "call_logs"
 private const val ROUTE_REMINDERS = "reminders"
 private const val ROUTE_CONTACT_DETAIL = "contact/{lookupKey}"
+private const val ROUTE_VOICE = "voice"
 private fun contactDetailRoute(lookupKey: String) = "contact/$lookupKey"
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var onboardingPreferences: OnboardingPreferences
+
+    @Inject lateinit var voiceIntroPreferences: VoiceIntroPreferences
 
     // The listener service only ever calls CallLogObserver.register() once, when it (re)connects -
     // if READ_CALL_LOG gets granted while that service is already connected (the common case: the
@@ -122,7 +135,7 @@ class MainActivity : ComponentActivity() {
         val onboardingDone = onboardingPreferences.completed.value
         setContent {
             KeepInTouchTheme {
-                KeepInTouchRoot(startAtOnboarding = !onboardingDone)
+                KeepInTouchRoot(startAtOnboarding = !onboardingDone, voiceIntroPreferences = voiceIntroPreferences)
             }
         }
     }
@@ -141,7 +154,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
+private fun KeepInTouchRoot(startAtOnboarding: Boolean, voiceIntroPreferences: VoiceIntroPreferences) {
     val navController = rememberNavController()
     var scheduleSheetArgs by remember { mutableStateOf<ScheduleSheetArgs?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -156,6 +169,16 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
     // Call Logs, Confirm, Contact Detail), keeps the tab bar visible - it's frequently revisited
     // alongside the main tabs rather than a one-off drill-down.
     val showBottomBar = currentRoute in Destination.bottomBarDestinations.map { it.route } || currentRoute == ROUTE_REMINDERS
+    // Voice scheduling's entry point floats over the everyday screens - but not Settings or
+    // anything reached from it (App Logs, Call Logs, Reminders), onboarding, or itself.
+    val showVoiceButton = currentRoute in setOf(
+        Destination.Today.route, Destination.People.route, ROUTE_CONFIRM, ROUTE_CONTACT_DETAIL
+    )
+    // One-time "In Touch just got smarter" overlay pointing at the mic - only once onboarding is
+    // done and Today (with the mic) is on screen, and only until it's been dismissed once.
+    val voiceIntroSeen by voiceIntroPreferences.seen.collectAsState()
+    var micBounds by remember { mutableStateOf<Rect?>(null) }
+    val openVoice = { navController.navigate(ROUTE_VOICE) { launchSingleTop = true } }
 
     // Every fresh return to the app - Home/app-switcher away and back, screen off/on, another app
     // opened over this one - drops back to Today, discarding wherever else you were (People,
@@ -205,6 +228,16 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
                 AppBottomBar(navController)
+            }
+        },
+        floatingActionButton = {
+            AnimatedVisibility(visible = showVoiceButton, enter = fadeIn(), exit = fadeOut()) {
+                FloatingActionButton(
+                    onClick = { openVoice() },
+                    modifier = Modifier.onGloballyPositioned { micBounds = it.boundsInRoot() }
+                ) {
+                    Icon(Icons.Filled.Mic, contentDescription = "Create a schedule by voice")
+                }
             }
         }
     ) { padding ->
@@ -298,6 +331,15 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
                 )
             }
             composable(
+                ROUTE_VOICE,
+                enterTransition = { Transitions.pushEnter() },
+                exitTransition = { Transitions.pushExit() },
+                popEnterTransition = { Transitions.popEnter() },
+                popExitTransition = { Transitions.popExit() }
+            ) {
+                VoiceScheduleScreen(onBack = { navController.popBackStack() })
+            }
+            composable(
                 route = ROUTE_CONTACT_DETAIL,
                 arguments = listOf(navArgument("lookupKey") { type = NavType.StringType }),
                 enterTransition = { Transitions.pushEnter() },
@@ -313,6 +355,19 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
                 )
             }
         }
+    }
+
+    val introMicBounds = micBounds
+    if (!voiceIntroSeen && currentRoute == Destination.Today.route && introMicBounds != null) {
+        VoiceIntroOverlay(
+            micBounds = introMicBounds,
+            wakeWord = BuildConfig.WAKE_WORD,
+            onDismiss = voiceIntroPreferences::markSeen,
+            onOpenVoice = {
+                voiceIntroPreferences.markSeen()
+                openVoice()
+            }
+        )
     }
 
     scheduleSheetArgs?.let { args ->

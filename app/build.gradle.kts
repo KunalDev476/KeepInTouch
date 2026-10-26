@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -23,6 +25,14 @@ android {
         versionName = "1.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Voice scheduling's wake word - override per machine with `voice.wakeWord=...` in
+        // local.properties (not committed); everyone else gets "Jarvis".
+        val localProperties = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }
+        val wakeWord = localProperties.getProperty("voice.wakeWord", "Jarvis").trim().ifEmpty { "Jarvis" }
+        buildConfigField("String", "WAKE_WORD", "\"${wakeWord.replace("\"", "")}\"")
     }
 
     buildTypes {
@@ -55,6 +65,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {

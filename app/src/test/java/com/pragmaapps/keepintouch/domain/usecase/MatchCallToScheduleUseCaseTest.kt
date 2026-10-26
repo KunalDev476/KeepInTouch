@@ -216,4 +216,37 @@ class MatchCallToScheduleUseCaseTest {
 
         assertEquals(MatchOutcome.NoMatch, outcome)
     }
+
+    @Test
+    fun `several schedules for the same contact resolve to the one due soonest`() = runTest {
+        val schedules = FakeScheduleRepository(
+            listOf(
+                schedule(1, "k1", "Rahul").copy(nextDueDate = 5_000),
+                schedule(2, "k1", "Rahul").copy(nextDueDate = 2_000)
+            )
+        )
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        val outcome = useCase("Rahul")
+
+        assertTrue(outcome is MatchOutcome.UniqueSchedule)
+        assertEquals(2L, (outcome as MatchOutcome.UniqueSchedule).scheduleId)
+        assertEquals(MatchConfidence.EXACT, outcome.confidence)
+    }
+
+    @Test
+    fun `a phone number matching several schedules of one contact is not ambiguous`() = runTest {
+        val schedules = FakeScheduleRepository(
+            listOf(
+                schedule(1, "k1", "Mummy", numberSnapshot = "8532921158").copy(nextDueDate = 9_000),
+                schedule(2, "k1", "Mummy", numberSnapshot = "8532921158").copy(nextDueDate = 1_000)
+            )
+        )
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        val outcome = useCase("+918532921158")
+
+        assertTrue(outcome is MatchOutcome.UniqueSchedule)
+        assertEquals(2L, (outcome as MatchOutcome.UniqueSchedule).scheduleId)
+    }
 }

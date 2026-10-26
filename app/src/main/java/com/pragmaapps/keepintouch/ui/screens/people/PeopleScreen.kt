@@ -106,7 +106,11 @@ fun PeopleScreen(
             // Only once there's something to browse in Call Schedules - with zero schedules, the
             // segment's own EmptyState already tells you to switch to All contacts and tap +.
             if (uiState.segment == PeopleSegment.SCHEDULED && uiState.scheduledRows.isNotEmpty()) {
-                FloatingActionButton(onClick = { viewModel.onSegmentChange(PeopleSegment.ALL) }) {
+                // Lifted above the app-wide voice mic button, which sits in this same corner.
+                FloatingActionButton(
+                    onClick = { viewModel.onSegmentChange(PeopleSegment.ALL) },
+                    modifier = Modifier.padding(bottom = 56.dp + Spacing.lg)
+                ) {
                     Icon(Icons.Filled.Add, contentDescription = "Add someone to call")
                 }
             }
