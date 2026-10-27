@@ -76,7 +76,11 @@ class ImportantCallReminderReceiver : BroadcastReceiver() {
                 }
 
                 postReminder(context, due)
-                AppLogger.i(TAG, "Posted reminder for ${due.size} schedule(s): ${due.joinToString { it.displayNameSnapshot }}")
+                AppLogger.i(
+                    TAG,
+                    "Posted reminder for ${due.size} schedule(s): ${due.joinToString { it.displayNameSnapshot }}",
+                    crashlyticsMessage = "Posted reminder for ${due.size} schedule(s): ids=${due.joinToString { it.id.toString() }}"
+                )
             } catch (t: Throwable) {
                 AppLogger.e(TAG, "Failed to post important-call reminder", t)
             } finally {

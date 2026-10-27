@@ -3,7 +3,9 @@
 package com.pragmaapps.keepintouch.ui.screens.settings
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -210,10 +212,42 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            item { SectionHeader("About") }
+            item {
+                Card(
+                    Modifier.fillMaxWidth().padding(bottom = Spacing.sm).clickable {
+                        ForegroundResetGate.suppressNext()
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                        } catch (e: ActivityNotFoundException) {
+                            // No browser installed - nothing sensible to open the link with.
+                        }
+                    }
+                ) {
+                    Row(
+                        Modifier.padding(Spacing.md).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Privacy policy", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "How this app uses your call log, contacts and notifications",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                    }
+                }
+            }
             item { Spacer(Modifier.height(Spacing.xxl)) }
         }
     }
 }
+
+private const val PRIVACY_POLICY_URL = "https://pragmaapps.com/privacy-policy/"
 
 @Composable
 private fun SectionHeader(title: String) {

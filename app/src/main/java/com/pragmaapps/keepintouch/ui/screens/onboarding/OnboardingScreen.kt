@@ -144,7 +144,7 @@ fun OnboardingScreen(
                 else -> PermissionPage(
                     icon = Icons.Filled.Alarm,
                     title = "Fire reminders exactly on time",
-                    why = "Lets an important call's 30-minutes-before warning fire at the exact moment, even in " +
+                    why = "Lets an important call's 10-minutes-before warning fire at the exact moment, even in " +
                         "Doze - granted from Settings, not a normal prompt. Only used to schedule this app's own " +
                         "reminders; it doesn't give access to anything else on your device.",
                     granted = uiState.exactAlarmGranted,

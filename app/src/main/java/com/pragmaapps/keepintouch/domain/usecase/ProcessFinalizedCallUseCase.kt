@@ -35,7 +35,11 @@ class ProcessFinalizedCallUseCase @Inject constructor(
             syncContacts()
             outcome = matchCallToSchedule(event.notificationName)
         }
-        AppLogger.i(TAG, "Match outcome for \"${event.notificationName}\": ${outcome::class.simpleName}")
+        AppLogger.i(
+            TAG,
+            "Match outcome for \"${event.notificationName}\": ${outcome::class.simpleName}",
+            crashlyticsMessage = "Match outcome for event id=${event.id}: ${outcome::class.simpleName}"
+        )
 
         // Always record the best-effort match attempt, even when not qualified, purely for Diagnostics.
         if (outcome is MatchOutcome.UniqueSchedule) {
@@ -43,7 +47,11 @@ class ProcessFinalizedCallUseCase @Inject constructor(
         }
 
         if (!event.qualified) {
-            AppLogger.d(TAG, "\"${event.notificationName}\" matched but not qualified - not acting on it")
+            AppLogger.d(
+                TAG,
+                "\"${event.notificationName}\" matched but not qualified - not acting on it",
+                crashlyticsMessage = "Event id=${event.id} matched but not qualified - not acting on it"
+            )
             return // logged only - never act on a non-qualifying call
         }
 
