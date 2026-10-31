@@ -94,6 +94,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".data.postcall.PostCallConfirmationReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".data.reminder.BootReminderRescheduler"
             android:exported="false">
             <intent-filter>

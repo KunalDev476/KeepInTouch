@@ -1,12 +1,15 @@
 package com.pragmaapps.keepintouch.domain.usecase
 
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.prefs.DetectionPreferences
 import com.pragmaapps.keepintouch.domain.model.CallEvent
 import com.pragmaapps.keepintouch.domain.model.PendingMatch
 import com.pragmaapps.keepintouch.domain.repository.CallEventRepository
 import com.pragmaapps.keepintouch.domain.repository.PendingMatchRepository
+import com.pragmaapps.keepintouch.domain.repository.PostCallConfirmationNotifier
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import com.pragmaapps.keepintouch.domain.util.RecurrenceEngine
+import com.pragmaapps.keepintouch.domain.util.UnconfirmedOutgoingCallRule
 import javax.inject.Inject
 
 private const val TAG = "ProcessFinalizedCall"
@@ -24,7 +27,9 @@ class ProcessFinalizedCallUseCase @Inject constructor(
     private val scheduleRepository: ScheduleRepository,
     private val callEventRepository: CallEventRepository,
     private val pendingMatchRepository: PendingMatchRepository,
-    private val syncContacts: SyncContactsUseCase
+    private val syncContacts: SyncContactsUseCase,
+    private val detectionPreferences: DetectionPreferences,
+    private val postCallConfirmationNotifier: PostCallConfirmationNotifier
 ) {
     suspend operator fun invoke(event: CallEvent) {
         var outcome = matchCallToSchedule(event.notificationName)
@@ -52,7 +57,8 @@ class ProcessFinalizedCallUseCase @Inject constructor(
                 "\"${event.notificationName}\" matched but not qualified - not acting on it",
                 crashlyticsMessage = "Event id=${event.id} matched but not qualified - not acting on it"
             )
-            return // logged only - never act on a non-qualifying call
+            handleUnconfirmedOutgoing(event, outcome)
+            return // never act on a non-qualifying call - except an unconfirmed outgoing one, above
         }
 
         when (outcome) {
@@ -79,6 +85,37 @@ class ProcessFinalizedCallUseCase @Inject constructor(
                 resolvedScheduleId = null
             )
         )
+    }
+
+    /**
+     * An outgoing dialer call whose answer couldn't be detected (see UnconfirmedOutgoingCallRule):
+     * under 30s the user is asked with a post-call notification, 30s or more completes the schedule.
+     * Only a single, currently-due schedule - several matches are already a Confirm-screen prompt.
+     */
+    private suspend fun handleUnconfirmedOutgoing(event: CallEvent, outcome: MatchOutcome) {
+        val decision = UnconfirmedOutgoingCallRule.decide(event, detectionPreferences.settings.value.countOutgoing)
+        if (decision == UnconfirmedOutgoingCallRule.Decision.NONE) return
+        if (outcome !is MatchOutcome.UniqueSchedule) return
+        val schedule = scheduleRepository.findById(outcome.scheduleId) ?: return
+        if (!RecurrenceEngine.isDue(schedule, System.currentTimeMillis())) {
+            AppLogger.d(TAG, "Unconfirmed outgoing call (event id=${event.id}) matched a schedule that isn't due - nothing to do")
+            return
+        }
+        val durationSec = UnconfirmedOutgoingCallRule.dialToHangUpMs(event.statesSeen)?.div(1000)
+        when (decision) {
+            UnconfirmedOutgoingCallRule.Decision.ASK_USER -> postCallConfirmationNotifier.show(event, schedule)
+            UnconfirmedOutgoingCallRule.Decision.AUTO_COMPLETE -> {
+                fulfillSchedule(
+                    schedule,
+                    event.id,
+                    outcome.confidence,
+                    "Outgoing call of ${durationSec}s with no answer signal - 30s or longer counts as completed",
+                    completedAt = event.endTime ?: System.currentTimeMillis()
+                )
+                AppLogger.i(TAG, "Unconfirmed outgoing call (event id=${event.id}, ${durationSec}s) completed schedule id=${schedule.id}")
+            }
+            UnconfirmedOutgoingCallRule.Decision.NONE -> Unit
+        }
     }
 
     private suspend fun tryFulfill(event: CallEvent, outcome: MatchOutcome.UniqueSchedule) {

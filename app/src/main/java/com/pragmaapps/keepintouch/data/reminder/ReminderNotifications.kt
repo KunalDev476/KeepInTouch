@@ -9,7 +9,7 @@ import com.pragmaapps.keepintouch.data.logging.AppLogger
 private const val TAG = "ReminderNotifications"
 
 /**
- * The two notification channels this app posts to directly (not the call-detection listener,
+ * The notification channels this app posts to directly (not the call-detection listener,
  * which reads others' notifications, never posts). Kept separate on purpose: channel importance
  * (not the per-notification setPriority, which Android 8+ ignores in favor of the channel) is
  * what actually controls heads-up/sound - a 3x-daily digest reusing the important-call channel's
@@ -19,6 +19,7 @@ private const val TAG = "ReminderNotifications"
 object ReminderNotifications {
     const val CHANNEL_ID_IMPORTANT = "important_call_reminders"
     const val CHANNEL_ID_DIGEST = "digest_reminders"
+    const val CHANNEL_ID_POST_CALL = "post_call_confirmations"
 
     /**
      * Called unconditionally from KeepInTouchApplication.onCreate() on every process start,
@@ -54,6 +55,15 @@ object ReminderNotifications {
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "A daily summary of how many calls (important and normal) are still pending, at times you choose."
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID_POST_CALL,
+                "Post-call confirmations",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Asks after a short outgoing call whether you talked, when the app couldn't tell if it was answered."
             }
         )
     }

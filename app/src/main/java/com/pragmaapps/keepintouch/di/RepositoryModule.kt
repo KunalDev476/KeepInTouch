@@ -1,5 +1,6 @@
 package com.pragmaapps.keepintouch.di
 
+import com.pragmaapps.keepintouch.data.postcall.PostCallConfirmationNotifierImpl
 import com.pragmaapps.keepintouch.data.repository.CallEventRepositoryImpl
 import com.pragmaapps.keepintouch.data.repository.ContactRepositoryImpl
 import com.pragmaapps.keepintouch.data.repository.DataManagementRepositoryImpl
@@ -14,6 +15,7 @@ import com.pragmaapps.keepintouch.domain.repository.DataManagementRepository
 import com.pragmaapps.keepintouch.domain.repository.DigestReminderRepository
 import com.pragmaapps.keepintouch.domain.repository.LogRepository
 import com.pragmaapps.keepintouch.domain.repository.PendingMatchRepository
+import com.pragmaapps.keepintouch.domain.repository.PostCallConfirmationNotifier
 import com.pragmaapps.keepintouch.domain.repository.ScheduleCompletionRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import dagger.Binds
@@ -57,4 +59,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindDigestReminderRepository(impl: DigestReminderRepositoryImpl): DigestReminderRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPostCallConfirmationNotifier(impl: PostCallConfirmationNotifierImpl): PostCallConfirmationNotifier
 }
