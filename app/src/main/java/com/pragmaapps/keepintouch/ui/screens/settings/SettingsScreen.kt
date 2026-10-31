@@ -80,7 +80,7 @@ fun SettingsScreen(
         ActivityResultContracts.RequestPermission()
     ) { viewModel.refreshPermissionState() }
 
-    val callLogPermissionLauncher = rememberLauncherForActivityResult(
+    val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { viewModel.refreshPermissionState() }
 
@@ -116,9 +116,9 @@ fun SettingsScreen(
                     title = "Notification permissions",
                     granted = uiState.notificationListenerGranted,
                     description = if (uiState.notificationListenerGranted) {
-                        "Granted - this app can read WhatsApp call notifications."
+                        "Granted - this app can read WhatsApp and phone call notifications."
                     } else {
-                        "Required to detect WhatsApp calls. Android requires this to be granted from Settings, not a normal prompt."
+                        "Required to detect WhatsApp and regular phone calls. Android requires this to be granted from Settings, not a normal prompt."
                     },
                     actionLabel = "Open Settings",
                     onAction = {
@@ -129,22 +129,20 @@ fun SettingsScreen(
                 )
             }
             item {
-                // WhatsAppCallListenerService is strictly WhatsApp-scoped with no cross-app
-                // fallback - this is the only path for cellular (non-WhatsApp) call detection, so
-                // its absence is surfaced here rather than silently degrading.
                 PermissionStatusCard(
-                    title = "Call log permission",
-                    granted = uiState.callLogPermissionGranted,
-                    description = if (uiState.callLogPermissionGranted) {
-                        "Granted - this app can detect regular (non-WhatsApp) phone calls."
+                    title = "Phone call duration",
+                    granted = uiState.phoneStatePermissionGranted,
+                    description = if (uiState.phoneStatePermissionGranted) {
+                        "Granted - phone call durations are measured even when the call stays on the full-screen call screen."
                     } else {
-                        "Required to detect regular phone calls. Without it, only WhatsApp calls will be detected - " +
-                            "schedules fulfilled only by a WhatsApp call, never a normal call."
+                        "Needed to measure how long a phone call lasted - some phones show no call notification while " +
+                            "the full-screen call screen is open. Only the call's ringing / in progress / ended status " +
+                            "is read, never the number."
                     },
-                    actionLabel = "Grant call log access",
+                    actionLabel = "Allow phone call status",
                     onAction = {
                         ForegroundResetGate.suppressNext()
-                        callLogPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
+                        phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
                     },
                     modifier = Modifier.padding(bottom = Spacing.lg)
                 )

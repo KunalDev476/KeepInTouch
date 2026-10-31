@@ -30,4 +30,7 @@ interface PendingMatchDao {
 
     @Update
     suspend fun update(pendingMatch: PendingMatchEntity)
+
+    @Query("DELETE FROM pending_matches")
+    suspend fun deleteAll()
 }

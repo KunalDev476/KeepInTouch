@@ -2,6 +2,7 @@ package com.pragmaapps.keepintouch.ui.screens.logs
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pragmaapps.keepintouch.data.notification.PhoneCallStateTracker
 import com.pragmaapps.keepintouch.data.prefs.DetectionPreferences
 import com.pragmaapps.keepintouch.domain.model.Direction
 import com.pragmaapps.keepintouch.domain.repository.CallEventRepository
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class OutgoingDetectionStatus(val outgoingObserved: Int, val totalEvents: Int) {
@@ -31,19 +33,30 @@ data class OutgoingDetectionStatus(val outgoingObserved: Int, val totalEvents: I
         }
 }
 
-data class CellularDetectionStatus(val dialerPackage: String?, val cellularEventCount: Int, val totalEvents: Int) {
+data class CellularDetectionStatus(
+    val dialerPackage: String?,
+    val cellularEventCount: Int,
+    val totalEvents: Int,
+    val phoneStateTracking: Boolean = false
+) {
     val message: String
         get() {
             val dialerNote = dialerPackage?.let { "Resolved default dialer: $it (informational only - detection isn't gated on this)." }
                 ?: "Couldn't determine this device's default dialer app (informational only - detection doesn't depend on it)."
-            val outgoingTip = "Tip: on some phones, an outgoing call has no notification at all while you're still on the " +
-                "call screen - switch away (press home, or open another app) while it's ringing or connected and it'll be " +
-                "picked up. Incoming calls and WhatsApp calls don't need this."
+            val outgoingTip = if (phoneStateTracking) {
+                "Call duration tracking is on: an answered phone call gets its duration even if it stays on the full-screen " +
+                    "call screen. An outgoing call that never shows a notification is listed as \"(unknown)\" with its " +
+                    "duration - it can't be matched to a schedule. Tip: switch away from the call screen during an outgoing " +
+                    "call so its notification names the person."
+            } else {
+                "Call duration tracking is off - allow \"Phone call duration\" in Settings. Without it, a phone call that " +
+                    "stays on the full-screen call screen may get no duration. Tip: switch away (press home, or open another " +
+                    "app) during the call and its notification will be picked up. WhatsApp calls don't need this."
+            }
             return if (cellularEventCount == 0) {
                 "$dialerNote UNCONFIRMED: no non-WhatsApp call notification has been observed yet. Regular phone calls are " +
-                    "mainly shown via the OS's own in-call screen, not necessarily a notification - whether your dialer " +
-                    "posts one at all is unverified. Place a real cellular call to test; any package's call-shaped " +
-                    "notification is now picked up, not just the resolved default dialer's. $outgoingTip"
+                    "detected only from your dialer's call notification - whether it posts one, and when, varies by phone. " +
+                    "Place a real cellular call to test. $outgoingTip"
             } else {
                 "$dialerNote Observed $cellularEventCount non-WhatsApp call notification(s) out of $totalEvents total. $outgoingTip"
             }
@@ -57,7 +70,7 @@ data class CallLogsUiState(
     val isLoading: Boolean = true
 )
 
-/** Every captured call notification/call-log entry, qualified or not, with why - moved out of
+/** Every captured call notification episode, qualified or not, with why - moved out of
  *  Settings' old inline "Diagnostics" section into its own screen, same pattern as App Logs. */
 @HiltViewModel
 class CallLogsViewModel @Inject constructor(
@@ -65,7 +78,8 @@ class CallLogsViewModel @Inject constructor(
     private val scheduleRepository: ScheduleRepository,
     private val pendingMatchRepository: PendingMatchRepository,
     private val detectionPreferences: DetectionPreferences,
-    private val callEventDiagnostics: CallEventDiagnostics
+    private val callEventDiagnostics: CallEventDiagnostics,
+    private val phoneCallStateTracker: PhoneCallStateTracker
 ) : ViewModel() {
 
     val uiState: StateFlow<CallLogsUiState> = combine(
@@ -77,14 +91,27 @@ class CallLogsViewModel @Inject constructor(
         val displays = callEventDiagnostics.buildDisplays(events, schedules, detection, pendingMatches)
         val outgoingCount = events.count { it.direction == Direction.OUTGOING }
         val dialerPackage = WhatsAppCallListenerService.resolvedDialerPackage
-        // WhatsAppCallListenerService is strictly package-gated to WHATSAPP_PACKAGES, so every
-        // non-WhatsApp CallEvent is sourced from CallLogObserver (tagged CALL_LOG_SOURCE) instead.
+        // Every non-WhatsApp CallEvent is a dialer/other calling app's call notification, a call
+        // seen only via the call state (PHONE_STATE_SOURCE), or a legacy row from the old
+        // call-log source (tagged "android.calllog").
         val cellularCount = events.count { it.packageName !in WHATSAPP_PACKAGES }
         CallLogsUiState(
             events = displays,
             outgoingStatus = OutgoingDetectionStatus(outgoingCount, events.size),
-            cellularStatus = CellularDetectionStatus(dialerPackage, cellularCount, events.size),
+            cellularStatus = CellularDetectionStatus(dialerPackage, cellularCount, events.size, phoneCallStateTracker.isTracking),
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CallLogsUiState())
+
+    /**
+     * Debugging aid: deletes every captured call episode. Pending Confirm-screen matches go too -
+     * each one points at a call event, and resolving one whose event is gone would silently
+     * fulfill nothing. Schedule completions are kept: they're real history, not diagnostics.
+     */
+    fun clearCallLogs() {
+        viewModelScope.launch {
+            pendingMatchRepository.clearAll()
+            callEventRepository.clearAll()
+        }
+    }
 }

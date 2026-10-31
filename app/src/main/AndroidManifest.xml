@@ -24,21 +24,18 @@
     <!-- Re-arms important-call reminders after a reboot - exact alarms don't survive one. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- The authoritative source for regular (non-WhatsApp) call detection - see CallLogObserver.
-         Call type (incoming/outgoing/missed) and duration come straight from the OS's own call
-         log entry, written the moment a call ends, regardless of whether a notification for it
-         ever existed or what was in the foreground - unlike notification-based detection, which
-         on some OEMs never posts anything for an outgoing call until you background the call
-         screen. When this isn't granted, the app falls back to the notification-heuristic path
-         instead (WhatsAppCallListenerService's own category/showChronometer/actionCount signals).
-         WhatsApp itself is never in this log - its detection is unaffected either way. -->
-    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- Used only to measure how long a regular phone call lasted (see PhoneCallStateTracker):
+         the telephony call state - ringing / in a call / idle - with no phone number, which this
+         API never exposes. Needed because on some OEMs the dialer posts no notification while its
+         full-screen call screen is up, so a call's notification can't say when it was answered or
+         when it ended. Who the call was with still comes from the dialer's notification only. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
-    <!-- Deliberately NOT declared here: android.permission.INTERNET, READ_PHONE_STATE. None of
-         this app's own code makes a network call or reads phone state - READ_PHONE_STATE would
-         add nothing anyway (Android 12+ redacts caller info from telephony call-state callbacks
-         regardless of permission, and never exposed it for outgoing calls even before that -
-         READ_CALL_LOG above is the only real source).
+    <!-- Deliberately NOT declared here: android.permission.INTERNET, READ_CALL_LOG. None of this
+         app's own code makes a network call or reads the call log - both WhatsApp and regular
+         cellular calls are detected from their call notifications (see
+         WhatsAppCallListenerService), which needs notification access rather than any declared
+         permission.
 
          NOTE: INTERNET, ACCESS_NETWORK_STATE, WAKE_LOCK, and the AD_ID/AdServices permissions
          are still present in the *merged* manifest - Firebase Analytics/Crashlytics

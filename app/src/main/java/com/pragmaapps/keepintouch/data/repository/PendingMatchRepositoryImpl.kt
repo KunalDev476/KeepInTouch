@@ -26,4 +26,6 @@ class PendingMatchRepositoryImpl @Inject constructor(
     override suspend fun insert(pendingMatch: PendingMatch): Long = dao.insert(pendingMatch.toEntity())
 
     override suspend fun update(pendingMatch: PendingMatch) = dao.update(pendingMatch.toEntity())
+
+    override suspend fun clearAll() = dao.deleteAll()
 }

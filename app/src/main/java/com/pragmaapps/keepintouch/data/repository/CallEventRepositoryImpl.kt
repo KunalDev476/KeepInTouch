@@ -23,6 +23,12 @@ class CallEventRepositoryImpl @Inject constructor(
 
     override suspend fun findByNotifKey(notifKey: String): CallEvent? = dao.findByNotifKey(notifKey)?.toDomain()
 
+    override suspend fun findLatestFinalizedByNotifKey(notifKey: String): CallEvent? =
+        dao.findLatestFinalizedByNotifKey(notifKey)?.toDomain()
+
+    override suspend fun findPostedBetween(fromMs: Long, toMs: Long): List<CallEvent> =
+        dao.findPostedBetween(fromMs, toMs).map { it.toDomain() }
+
     override suspend fun findById(id: Long): CallEvent? = dao.findById(id)?.toDomain()
 
     override suspend fun upsert(event: CallEvent): Long = dao.upsert(event.toEntity())
@@ -30,4 +36,6 @@ class CallEventRepositoryImpl @Inject constructor(
     override suspend fun update(event: CallEvent) = dao.update(event.toEntity())
 
     override suspend fun countByDirection(direction: Direction): Int = dao.countByDirection(direction)
+
+    override suspend fun clearAll() = dao.deleteAll()
 }

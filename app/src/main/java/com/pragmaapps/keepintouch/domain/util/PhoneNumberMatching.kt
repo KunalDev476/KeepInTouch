@@ -20,7 +20,7 @@ object PhoneNumberMatching {
 
     /** True if this text is plausibly a raw phone number rather than a name - no letters, mostly digits. */
     fun looksLikePhoneNumber(text: String): Boolean {
-        val trimmed = text.trim()
+        val trimmed = BidiMarks.strip(text).trim()
         if (trimmed.isEmpty()) return false
         val digitCount = trimmed.count { it.isDigit() }
         val hasOnlyAllowedChars = trimmed.all { it.isDigit() || it in ALLOWED_NON_DIGIT_CHARS }

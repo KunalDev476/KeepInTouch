@@ -12,7 +12,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,6 +43,19 @@ import com.pragmaapps.keepintouch.ui.theme.Spacing
 @Composable
 fun CallLogsScreen(onBack: () -> Unit, viewModel: CallLogsViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Clear all call logs?") },
+            text = { Text("This deletes every captured call and any pending confirmations. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearCallLogs(); showClearConfirm = false }) { Text("Clear") }
+            },
+            dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") } }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -48,6 +64,11 @@ fun CallLogsScreen(onBack: () -> Unit, viewModel: CallLogsViewModel = hiltViewMo
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showClearConfirm = true }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Clear call logs")
                     }
                 }
             )

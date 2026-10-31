@@ -27,14 +27,14 @@ data class SettingsUiState(
     val syncedContactCount: Int = 0,
     val whatsappContactCount: Int = 0,
     val notificationListenerGranted: Boolean = false,
-    val callLogPermissionGranted: Boolean = false,
+    val phoneStatePermissionGranted: Boolean = false,
     val detectionSettings: DetectionSettings = DetectionSettings()
 )
 
 private data class PermissionSnapshot(
     val contactsGranted: Boolean,
     val notificationListenerGranted: Boolean,
-    val callLogGranted: Boolean
+    val phoneStateGranted: Boolean
 )
 
 @HiltViewModel
@@ -55,7 +55,7 @@ class SettingsViewModel @Inject constructor(
         SettingsUiState(
             contactsPermissionGranted = permissions.contactsGranted,
             notificationListenerGranted = permissions.notificationListenerGranted,
-            callLogPermissionGranted = permissions.callLogGranted,
+            phoneStatePermissionGranted = permissions.phoneStateGranted,
             detectionSettings = detection
         )
     }
@@ -68,8 +68,8 @@ class SettingsViewModel @Inject constructor(
         val app = getApplication<Application>()
         val contacts = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         val listener = NotificationManagerCompat.getEnabledListenerPackages(app).contains(app.packageName)
-        val callLog = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
-        return PermissionSnapshot(contacts, listener, callLog)
+        val phoneState = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+        return PermissionSnapshot(contacts, listener, phoneState)
     }
 
     fun refreshPermissionState() {

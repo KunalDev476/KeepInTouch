@@ -10,4 +10,5 @@ interface PendingMatchRepository {
     suspend fun findByCallEventId(callEventId: Long): PendingMatch?
     suspend fun insert(pendingMatch: PendingMatch): Long
     suspend fun update(pendingMatch: PendingMatch)
+    suspend fun clearAll()
 }

@@ -5,6 +5,7 @@ import android.app.Person
 import android.graphics.drawable.Icon
 import android.os.Bundle
 import android.service.notification.StatusBarNotification
+import com.pragmaapps.keepintouch.domain.util.BidiMarks
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -71,8 +72,11 @@ object CallNotificationExtras {
         val people = extras.getParcelableArrayList(Notification.EXTRA_PEOPLE_LIST, Person::class.java)
         val firstPerson = people?.firstOrNull()
 
-        val callerName = firstPerson?.name?.toString()
-            ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+        // Dialers may wrap a number in invisible direction marks (see BidiMarks) - stripped here so
+        // the stored name, Call Logs and matching all see the plain text.
+        val callerName = (firstPerson?.name?.toString() ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString())
+            ?.let { BidiMarks.strip(it).trim() }
+            ?.takeIf { it.isNotEmpty() }
 
         return Parsed(
             callType = callType,
@@ -124,6 +128,19 @@ object CallNotificationExtras {
         null -> "null"
         is Array<*> -> value.joinToString(prefix = "[", postfix = "]") { it.toString() }
         else -> value.toString()
+    }
+
+    /** statusText of the last notification snapshot in [rawJson], or null if there is none. */
+    fun lastStatusText(rawJson: String?): String? = try {
+        if (rawJson.isNullOrBlank()) null
+        else JSONArray(rawJson).let { array ->
+            (array.length() - 1 downTo 0)
+                .map { array.optJSONObject(it) }
+                .firstOrNull { it != null && it.has("key") }
+                ?.optString("statusText", "")
+        }
+    } catch (t: Throwable) {
+        null
     }
 
     fun mergeJsonArray(existingRawJson: String?, newEntry: JSONObject): String {

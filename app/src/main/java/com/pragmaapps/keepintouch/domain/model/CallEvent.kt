@@ -1,8 +1,8 @@
 package com.pragmaapps.keepintouch.domain.model
 
 /**
- * One WhatsApp call "episode" rebuilt from NotificationListenerService callbacks that share the
- * same notification key. See [com.pragmaapps.keepintouch.domain.util.QualifyingCallRule] for how
+ * One call "episode" (WhatsApp or a regular cellular call) rebuilt from
+ * NotificationListenerService callbacks that share the same notification key. See [com.pragmaapps.keepintouch.domain.util.QualifyingCallRule] for how
  * [qualified] is derived.
  */
 data class CallEvent(
@@ -11,12 +11,19 @@ data class CallEvent(
     val notifKey: String,
     /** Human-readable trace of every state transition observed for this episode. */
     val statesSeen: String,
-    /** True iff an ONGOING (android.callType == 2) state was ever observed - answered/connected. */
+    /**
+     * Answered/connected: android.showChronometer was observed true, or - for a dialer call with
+     * call-state tracking - the call state showed an answered incoming call (see CellularCallTiming),
+     * or an outgoing call's status text cleared after dialing (see DialerCallSignals).
+     */
     val connected: Boolean,
     val isVideo: Boolean,
     val isGroupCall: Boolean,
     val direction: Direction,
-    /** Caller display name as WhatsApp rendered it in the notification - no phone number is ever available. */
+    /**
+     * Caller display name as the notification rendered it. A dialer may show a raw phone number
+     * here instead of a name (see PhoneNumberMatching); WhatsApp never does in practice.
+     */
     val notificationName: String,
     val postTime: Long,
     val ongoingWhen: Long?,

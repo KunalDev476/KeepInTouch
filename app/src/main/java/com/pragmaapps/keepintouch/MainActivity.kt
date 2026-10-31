@@ -65,8 +65,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.pragmaapps.keepintouch.data.notification.CallLogObserver
 import com.pragmaapps.keepintouch.data.notification.ContactsChangeObserver
+import com.pragmaapps.keepintouch.data.notification.PhoneCallStateTracker
 import com.pragmaapps.keepintouch.data.prefs.OnboardingPreferences
 import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.ui.navigation.Destination
@@ -102,17 +102,16 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var onboardingPreferences: OnboardingPreferences
 
-    // The listener service only ever calls CallLogObserver.register() once, when it (re)connects -
-    // if READ_CALL_LOG gets granted while that service is already connected (the common case: the
-    // user grants it from onboarding/Settings without restarting anything), nothing re-triggers
-    // registration for the rest of that session. Re-attempting it on every resume closes that gap -
-    // register() is a no-op if it's already registered, so this is safe to call repeatedly, and it
-    // also means returning to the app right after a call (the normal thing to do) immediately
-    // catches up on any call log entry that arrived while READ_CALL_LOG had never been checked yet.
-    @Inject lateinit var callLogObserver: CallLogObserver
-
-    // Same registration gap as callLogObserver, for READ_CONTACTS.
+    // The listener service only ever calls ContactsChangeObserver.register() once, when it
+    // (re)connects - if READ_CONTACTS gets granted while that service is already connected (the
+    // common case: the user grants it from onboarding/Settings without restarting anything),
+    // nothing re-triggers registration for the rest of that session. Re-attempting it on every
+    // resume closes that gap - register() is a no-op if it's already registered, so this is safe
+    // to call repeatedly.
     @Inject lateinit var contactsChangeObserver: ContactsChangeObserver
+
+    // Same registration gap as contactsChangeObserver, for READ_PHONE_STATE.
+    @Inject lateinit var phoneCallStateTracker: PhoneCallStateTracker
 
     @Inject lateinit var syncContacts: SyncContactsUseCase
 
@@ -129,8 +128,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        callLogObserver.register()
         contactsChangeObserver.register()
+        phoneCallStateTracker.register()
         // Picks up contact renames made while the app was closed and the observer wasn't running
         // (e.g. the listener service isn't enabled), before any screen shows a stale name.
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {

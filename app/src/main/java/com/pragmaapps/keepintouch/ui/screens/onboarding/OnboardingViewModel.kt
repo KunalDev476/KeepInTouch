@@ -22,7 +22,7 @@ data class OnboardingUiState(
     val notificationListenerGranted: Boolean = false,
     val postNotificationsGranted: Boolean = false,
     val exactAlarmGranted: Boolean = false,
-    val callLogGranted: Boolean = false
+    val phoneStateGranted: Boolean = false
 )
 
 @HiltViewModel
@@ -44,13 +44,13 @@ class OnboardingViewModel @Inject constructor(
         val listener = NotificationManagerCompat.getEnabledListenerPackages(app).contains(app.packageName)
         val postNotifications = ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val exactAlarm = ContextCompat.getSystemService(app, AlarmManager::class.java)?.canScheduleExactAlarms() ?: false
-        val callLog = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+        val phoneState = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
         _uiState.value = OnboardingUiState(
             contactsGranted = contacts,
             notificationListenerGranted = listener,
             postNotificationsGranted = postNotifications,
             exactAlarmGranted = exactAlarm,
-            callLogGranted = callLog
+            phoneStateGranted = phoneState
         )
     }
 

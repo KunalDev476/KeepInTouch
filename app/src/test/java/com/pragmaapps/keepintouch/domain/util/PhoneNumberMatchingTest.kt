@@ -18,6 +18,18 @@ class PhoneNumberMatchingTest {
     }
 
     @Test
+    fun `a number wrapped in invisible direction marks is still recognized`() {
+        assertTrue(PhoneNumberMatching.looksLikePhoneNumber("\u200E+919015156562"))
+        assertTrue(PhoneNumberMatching.looksLikePhoneNumber("\u202A+91 90151 56562\u202C"))
+        assertTrue(PhoneNumberMatching.looksLikePhoneNumber("\u2068+919015156562\u2069"))
+    }
+
+    @Test
+    fun `a direction-marked number matches the saved number`() {
+        assertTrue(PhoneNumberMatching.matches("\u200E+919015156562", "+91 90151 56562"))
+    }
+
+    @Test
     fun `a name is not a phone number`() {
         assertFalse(PhoneNumberMatching.looksLikePhoneNumber("Mummy"))
     }

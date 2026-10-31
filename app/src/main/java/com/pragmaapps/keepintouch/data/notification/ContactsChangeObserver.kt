@@ -28,7 +28,7 @@ private const val DEBOUNCE_MS = 3_000L
 /**
  * Re-syncs contacts (and with them, schedule name snapshots - see SyncContactsUseCase) whenever
  * the address book changes, so renaming a scheduled contact in the phone's Contacts app takes
- * effect even while this app isn't open. Registered alongside CallLogObserver: by
+ * effect even while this app isn't open. Registered by
  * WhatsAppCallListenerService, which keeps the process alive in the background, and by
  * MainActivity.onResume() in case READ_CONTACTS was granted after the service connected.
  */

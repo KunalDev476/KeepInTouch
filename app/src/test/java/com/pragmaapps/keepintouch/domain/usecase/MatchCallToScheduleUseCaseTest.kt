@@ -194,6 +194,20 @@ class MatchCallToScheduleUseCaseTest {
     }
 
     @Test
+    fun `a dialer number wrapped in a left-to-right mark still matches by phone number`() = runTest {
+        // Real device: ColorOS's incallui titled an outgoing call "\u200E+919015156562".
+        val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Abhiranjan Sir Pragmaapps", numberSnapshot = "+919015156562")))
+        val contacts = FakeContactRepository()
+        val useCase = MatchCallToScheduleUseCase(schedules, contacts)
+
+        val outcome = useCase("\u200E+919015156562")
+
+        assertTrue(outcome is MatchOutcome.UniqueSchedule)
+        assertEquals(1L, (outcome as MatchOutcome.UniqueSchedule).scheduleId)
+        assertEquals(MatchConfidence.PHONE_NUMBER, outcome.confidence)
+    }
+
+    @Test
     fun `a phone number never matches an inactive schedule`() = runTest {
         val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Mummy", active = false, numberSnapshot = "8532921158")))
         val contacts = FakeContactRepository()

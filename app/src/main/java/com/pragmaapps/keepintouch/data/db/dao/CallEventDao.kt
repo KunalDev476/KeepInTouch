@@ -19,6 +19,12 @@ interface CallEventDao {
     @Query("SELECT * FROM call_events WHERE notifKey = :notifKey AND endTime IS NULL ORDER BY postTime DESC LIMIT 1")
     suspend fun findByNotifKey(notifKey: String): CallEventEntity?
 
+    @Query("SELECT * FROM call_events WHERE notifKey = :notifKey AND endTime IS NOT NULL ORDER BY endTime DESC LIMIT 1")
+    suspend fun findLatestFinalizedByNotifKey(notifKey: String): CallEventEntity?
+
+    @Query("SELECT * FROM call_events WHERE postTime BETWEEN :fromMs AND :toMs ORDER BY postTime ASC")
+    suspend fun findPostedBetween(fromMs: Long, toMs: Long): List<CallEventEntity>
+
     @Query("SELECT * FROM call_events WHERE id = :id LIMIT 1")
     suspend fun findById(id: Long): CallEventEntity?
 
@@ -45,4 +51,7 @@ interface CallEventDao {
      */
     @Query("UPDATE call_events SET matchedScheduleId = NULL WHERE matchedScheduleId = :scheduleId")
     suspend fun clearScheduleMatch(scheduleId: Long)
+
+    @Query("DELETE FROM call_events")
+    suspend fun deleteAll()
 }

@@ -26,9 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -77,7 +77,7 @@ fun OnboardingScreen(
     val postNotificationsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.refresh()
     }
-    val callLogLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val phoneStateLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.refresh()
     }
 
@@ -85,7 +85,7 @@ fun OnboardingScreen(
         0 -> true
         1 -> uiState.contactsGranted
         2 -> uiState.notificationListenerGranted
-        3 -> uiState.callLogGranted
+        3 -> uiState.phoneStateGranted
         4 -> uiState.postNotificationsGranted
         else -> uiState.exactAlarmGranted
     }
@@ -108,28 +108,29 @@ fun OnboardingScreen(
                 )
                 2 -> PermissionPage(
                     icon = Icons.Filled.Notifications,
-                    title = "Detect WhatsApp calls",
-                    why = "Android requires notification access to let an app see WhatsApp's call notifications - " +
-                        "granted from Settings, not a normal prompt. We only ever look at notifications from " +
-                        "WhatsApp and WhatsApp Business; every other app's notifications are ignored immediately, " +
-                        "unread. From a WhatsApp notification we only read the caller's name and whether the call " +
-                        "is ringing, ongoing, or ended - never message text or chat content. That's used only to " +
-                        "mark a call as complete on a schedule you created; nothing is sent off your device, and " +
-                        "nothing is shared with us, WhatsApp, or anyone else. You can revoke this any time from " +
-                        "Settings > Apps > Special app access > Notification access.",
+                    title = "Detect WhatsApp and phone calls",
+                    why = "Android requires notification access to let an app see call notifications - granted " +
+                        "from Settings, not a normal prompt. We only ever look at call notifications - from " +
+                        "WhatsApp, your phone's dialer, or another calling app; every other notification is " +
+                        "ignored immediately, unread. From a call notification we only read the caller's name (or " +
+                        "number) and whether the call is ringing, ongoing, or ended - never message text or chat " +
+                        "content. That's used only to mark a call as complete on a schedule you created; nothing " +
+                        "is sent off your device, and nothing is shared with us, WhatsApp, or anyone else. You can " +
+                        "revoke this any time from Settings > Apps > Special app access > Notification access.",
                     granted = uiState.notificationListenerGranted,
                     ctaLabel = "Open Settings",
                     onCta = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
                 )
                 3 -> PermissionPage(
-                    icon = Icons.Filled.History,
-                    title = "Detect regular phone calls",
-                    why = "For calls that aren't on WhatsApp, we read the call log - just type (incoming/outgoing), " +
-                        "duration, and the number - right after a call ends, so it works even if you never leave the call screen. " +
-                        "Nothing is read except call records, and nothing ever leaves your device.",
-                    granted = uiState.callLogGranted,
-                    ctaLabel = "Grant call log access",
-                    onCta = { callLogLauncher.launch(Manifest.permission.READ_CALL_LOG) }
+                    icon = Icons.Filled.Timer,
+                    title = "Measure phone call duration",
+                    why = "Some phones show no call notification while the full-screen call screen is open, so we " +
+                        "also check whether a phone call is ringing, in progress, or has ended - only to measure " +
+                        "how long it lasted. This never gives us the phone number, your call history, or anything " +
+                        "else, and nothing leaves your device.",
+                    granted = uiState.phoneStateGranted,
+                    ctaLabel = "Allow phone call status",
+                    onCta = { phoneStateLauncher.launch(Manifest.permission.READ_PHONE_STATE) }
                 )
                 4 -> PermissionPage(
                     icon = Icons.Filled.NotificationsActive,
