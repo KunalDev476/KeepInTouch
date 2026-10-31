@@ -230,4 +230,89 @@ class MatchCallToScheduleUseCaseTest {
 
         assertEquals(MatchOutcome.NoMatch, outcome)
     }
+
+    // --- Caller number from the notification's caller Person (e.g. Samsung: name "Call", uri tel:) ---
+
+    @Test
+    fun `generic name with a caller number matches the schedule with that saved number`() = runTest {
+        val schedules = FakeScheduleRepository(
+            listOf(schedule(1, "k1", "Mummy", numberSnapshot = "090151 56562"), schedule(2, "k2", "Papa", numberSnapshot = "9876543210"))
+        )
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        val outcome = useCase("Call", "+919015156562")
+
+        assertTrue(outcome is MatchOutcome.UniqueSchedule)
+        outcome as MatchOutcome.UniqueSchedule
+        assertEquals(1L, outcome.scheduleId)
+        assertEquals(MatchConfidence.PHONE_NUMBER, outcome.confidence)
+    }
+
+    @Test
+    fun `same-name schedules are told apart by the caller number`() = runTest {
+        val schedules = FakeScheduleRepository(
+            listOf(schedule(1, "k1", "Rahul", numberSnapshot = "1111111111"), schedule(2, "k2", "Rahul", numberSnapshot = "+91 90151 56562"))
+        )
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        val outcome = useCase("Rahul", "+919015156562")
+
+        assertTrue(outcome is MatchOutcome.UniqueSchedule)
+        assertEquals(2L, (outcome as MatchOutcome.UniqueSchedule).scheduleId)
+    }
+
+    @Test
+    fun `the caller number wins when name and number point to different schedules`() = runTest {
+        val schedules = FakeScheduleRepository(
+            listOf(schedule(1, "k1", "Rahul", numberSnapshot = "1111111111"), schedule(2, "k2", "Mummy", numberSnapshot = "9015156562"))
+        )
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        val outcome = useCase("Rahul", "+919015156562")
+
+        assertTrue(outcome is MatchOutcome.UniqueSchedule)
+        assertEquals(2L, (outcome as MatchOutcome.UniqueSchedule).scheduleId)
+    }
+
+    @Test
+    fun `same-name schedules stay a confirmation when the number matches neither`() = runTest {
+        val schedules = FakeScheduleRepository(
+            listOf(schedule(1, "k1", "Rahul", numberSnapshot = "1111111111"), schedule(2, "k2", "Rahul", numberSnapshot = "2222222222"))
+        )
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        val outcome = useCase("Rahul", "+919015156562")
+
+        assertTrue(outcome is MatchOutcome.DuplicateSchedules)
+    }
+
+    @Test
+    fun `generic name whose number matches several schedules needs confirmation`() = runTest {
+        val schedules = FakeScheduleRepository(
+            listOf(schedule(1, "k1", "Mummy", numberSnapshot = "9015156562"), schedule(2, "k2", "Home", numberSnapshot = "+919015156562"))
+        )
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        val outcome = useCase("Call", "+919015156562")
+
+        assertTrue(outcome is MatchOutcome.DuplicateSchedules)
+        assertEquals(listOf(1L, 2L), (outcome as MatchOutcome.DuplicateSchedules).scheduleIds)
+    }
+
+    @Test
+    fun `generic name and an unknown number is no match`() = runTest {
+        val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Mummy", numberSnapshot = "1111111111")))
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        assertEquals(MatchOutcome.NoMatch, useCase("Call", "+919015156562"))
+    }
+
+    @Test
+    fun `without a caller number matching is name-only as before`() = runTest {
+        val schedules = FakeScheduleRepository(listOf(schedule(1, "k1", "Mummy", numberSnapshot = "9015156562")))
+        val useCase = MatchCallToScheduleUseCase(schedules, FakeContactRepository())
+
+        assertEquals(MatchOutcome.NoMatch, useCase("Call", null))
+        assertTrue(useCase("Mummy", null) is MatchOutcome.UniqueSchedule)
+    }
 }

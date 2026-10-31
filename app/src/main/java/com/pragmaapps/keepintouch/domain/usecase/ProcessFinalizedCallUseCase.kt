@@ -1,6 +1,7 @@
 package com.pragmaapps.keepintouch.domain.usecase
 
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.notification.CallNotificationExtras
 import com.pragmaapps.keepintouch.data.prefs.DetectionPreferences
 import com.pragmaapps.keepintouch.domain.model.CallEvent
 import com.pragmaapps.keepintouch.domain.model.PendingMatch
@@ -32,18 +33,23 @@ class ProcessFinalizedCallUseCase @Inject constructor(
     private val postCallConfirmationNotifier: PostCallConfirmationNotifier
 ) {
     suspend operator fun invoke(event: CallEvent) {
-        var outcome = matchCallToSchedule(event.notificationName)
+        // The caller's number, when the dialer's notification carried one in its caller Person -
+        // trusted over the name (see MatchCallToScheduleUseCase).
+        val callerNumber = CallNotificationExtras.lastCallerNumber(event.rawJson)
+        var outcome = matchCallToSchedule(event.notificationName, callerNumber)
         // The contact may have been renamed moments ago, before the contacts observer's sync
         // refreshed the schedule's name snapshot - sync once and retry before giving up. Only for
         // qualifying calls, since only those can act on a match.
         if (event.qualified && (outcome == MatchOutcome.NoMatch || outcome is MatchOutcome.ContactWithoutSchedule)) {
             syncContacts()
-            outcome = matchCallToSchedule(event.notificationName)
+            outcome = matchCallToSchedule(event.notificationName, callerNumber)
         }
+        val how = (outcome as? MatchOutcome.UniqueSchedule)?.let { " via ${it.confidence}" }.orEmpty()
+        // The number never goes to Crashlytics - only whether there was one.
         AppLogger.i(
             TAG,
-            "Match outcome for \"${event.notificationName}\": ${outcome::class.simpleName}",
-            crashlyticsMessage = "Match outcome for event id=${event.id}: ${outcome::class.simpleName}"
+            "Match outcome for \"${event.notificationName}\" (number=${callerNumber ?: "none"}): ${outcome::class.simpleName}$how",
+            crashlyticsMessage = "Match outcome for event id=${event.id} (hasNumber=${callerNumber != null}): ${outcome::class.simpleName}$how"
         )
 
         // Always record the best-effort match attempt, even when not qualified, purely for Diagnostics.

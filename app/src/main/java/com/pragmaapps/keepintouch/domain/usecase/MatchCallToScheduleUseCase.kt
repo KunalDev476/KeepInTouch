@@ -16,7 +16,26 @@ class MatchCallToScheduleUseCase @Inject constructor(
     private val scheduleRepository: ScheduleRepository,
     private val contactRepository: ContactRepository
 ) {
-    suspend operator fun invoke(notificationName: String): MatchOutcome {
+    /**
+     * [callerNumber] is the number a notification's caller Person carried in its tel: uri (see
+     * CallerNumber), when it had one - compared against schedules' saved numbers by their last 10
+     * digits (PhoneNumberMatching). When present it's trusted over the name:
+     * - it matches exactly one active schedule -> that schedule, even if the name points elsewhere
+     *   or matches nothing (Samsung's incallui shows only a generic "Call" as the name);
+     * - the name matches several schedules -> the one whose saved number matches breaks the tie;
+     * - the name matches nothing and the number matches several -> they need confirmation.
+     * Without a number, matching is name-only exactly as before.
+     */
+    suspend operator fun invoke(notificationName: String, callerNumber: String? = null): MatchOutcome {
+        val numberMatches = callerNumber?.let { findActiveByNumber(it) }.orEmpty()
+        if (numberMatches.size == 1) {
+            return MatchOutcome.UniqueSchedule(
+                numberMatches[0].id,
+                MatchConfidence.PHONE_NUMBER,
+                "The caller's number (from the notification's caller details) matched exactly one active schedule's saved number."
+            )
+        }
+
         // Some sources hand us a raw phone number instead of a name (the OS's own contact-name
         // resolution failed) - name-normalizing a number could never match a schedule's display
         // name anyway, so branch straight to number-matching instead of wasting a name lookup.
@@ -25,8 +44,31 @@ class MatchCallToScheduleUseCase @Inject constructor(
         }
         val normalizedCaller = NameNormalizer.normalize(notificationName)
         val strongCandidates = scheduleRepository.findActiveByNormalizedName(normalizedCaller)
+
+        if (strongCandidates.size >= 2 && numberMatches.isNotEmpty()) {
+            val numberIds = numberMatches.map { it.id }.toSet()
+            val both = strongCandidates.filter { it.id in numberIds }
+            if (both.size == 1) {
+                return MatchOutcome.UniqueSchedule(
+                    both[0].id,
+                    MatchConfidence.PHONE_NUMBER,
+                    "Caller name '$normalizedCaller' matches ${strongCandidates.size} active schedules - the caller's number picked the one with that saved number."
+                )
+            }
+        }
+        if (strongCandidates.isEmpty() && numberMatches.size >= 2) {
+            return MatchOutcome.DuplicateSchedules(
+                numberMatches.map { it.id },
+                "The caller's name matched no schedule, and the caller's number matches ${numberMatches.size} active schedules with that saved number."
+            )
+        }
         return evaluateAgainst(notificationName, normalizedCaller, strongCandidates)
     }
+
+    private suspend fun findActiveByNumber(number: String): List<Schedule> =
+        scheduleRepository.getActiveSnapshot().filter { schedule ->
+            schedule.numberSnapshot?.let { PhoneNumberMatching.matches(it, number) } ?: false
+        }
 
     /**
      * Deliberately narrower than name-matching: only ever compares against already-active
@@ -36,10 +78,7 @@ class MatchCallToScheduleUseCase @Inject constructor(
      * expanding into "want to schedule this contact?" suggestions the way a real name match can.
      */
     private suspend fun evaluateByPhoneNumber(rawNumber: String): MatchOutcome {
-        val activeSchedules = scheduleRepository.getActiveSnapshot()
-        val matches = activeSchedules.filter { schedule ->
-            schedule.numberSnapshot?.let { PhoneNumberMatching.matches(it, rawNumber) } ?: false
-        }
+        val matches = findActiveByNumber(rawNumber)
         return when {
             matches.size == 1 -> MatchOutcome.UniqueSchedule(
                 matches[0].id,

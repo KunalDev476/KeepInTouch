@@ -6,6 +6,7 @@ import android.graphics.drawable.Icon
 import android.os.Bundle
 import android.service.notification.StatusBarNotification
 import com.pragmaapps.keepintouch.domain.util.BidiMarks
+import com.pragmaapps.keepintouch.domain.util.CallerNumber
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -45,6 +46,8 @@ object CallNotificationExtras {
         val groupCallCandidateHits: Map<String, Boolean>,
         val peopleListSize: Int,
         val callerName: String?,
+        /** From a caller Person's "tel:" uri - see CallerNumber. Null when no Person carries one. */
+        val callerNumber: String?,
         val callerIcon: Icon?,
         val largeIcon: Icon?,
         val notificationWhen: Long,
@@ -78,12 +81,19 @@ object CallNotificationExtras {
             ?.let { BidiMarks.strip(it).trim() }
             ?.takeIf { it.isNotEmpty() }
 
+        // The CallStyle caller (android.callPerson) first, then the people list - the same Person
+        // on Samsung, but either may be the only one set, or carry the uri, on other dialers.
+        val callPerson = extras.getParcelable(Notification.EXTRA_CALL_PERSON, Person::class.java)
+        val callerNumber = (listOfNotNull(callPerson) + people.orEmpty())
+            .firstNotNullOfOrNull { CallerNumber.fromTelUri(it.uri) }
+
         return Parsed(
             callType = callType,
             isVideo = isVideo,
             groupCallCandidateHits = groupCallHits,
             peopleListSize = people?.size ?: 0,
             callerName = callerName,
+            callerNumber = callerNumber,
             callerIcon = firstPerson?.icon,
             largeIcon = notification.getLargeIcon(),
             notificationWhen = notification.`when`,
@@ -119,6 +129,7 @@ object CallNotificationExtras {
             put("groupCallCandidateHits", JSONObject(parsed.groupCallCandidateHits as Map<*, *>))
             put("peopleListSize", parsed.peopleListSize)
             put("callerName", parsed.callerName)
+            put("callerNumber", parsed.callerNumber)
             put("localElapsedRealtime", localElapsedRealtime)
             put("extras", extrasJson)
         }
@@ -153,6 +164,25 @@ object CallNotificationExtras {
                 .map { array.optJSONObject(it) }
                 .firstOrNull { it != null && it.has("key") }
                 ?.optString("statusText", "")
+        }
+    } catch (t: Throwable) {
+        null
+    }
+
+    /**
+     * The caller number from the latest notification snapshot in [rawJson] that had one. Not just
+     * the last snapshot: a dialer may add the number only partway through (confirmed on Samsung's
+     * incallui: the first two posts had no Person uri, the third had it), and the call-state
+     * snapshot appended at the end never carries one.
+     */
+    fun lastCallerNumber(rawJson: String?): String? = try {
+        if (rawJson.isNullOrBlank()) null
+        else JSONArray(rawJson).let { array ->
+            (array.length() - 1 downTo 0)
+                .mapNotNull { array.optJSONObject(it) }
+                .firstOrNull { it.has("callerNumber") && !it.isNull("callerNumber") }
+                ?.optString("callerNumber")
+                ?.takeIf { it.isNotBlank() }
         }
     } catch (t: Throwable) {
         null
