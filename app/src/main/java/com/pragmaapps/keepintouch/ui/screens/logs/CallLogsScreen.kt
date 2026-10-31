@@ -2,6 +2,11 @@
 
 package com.pragmaapps.keepintouch.ui.screens.logs
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -32,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pragmaapps.keepintouch.domain.usecase.CallEventDiagnostics
@@ -119,6 +125,7 @@ fun CallLogsScreen(onBack: () -> Unit, viewModel: CallLogsViewModel = hiltViewMo
 @Composable
 private fun CallLogCard(display: CallEventDiagnostics.Display, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val event = display.event
     Card(
         modifier.fillMaxWidth().clickable { expanded = !expanded },
@@ -152,7 +159,19 @@ private fun CallLogCard(display: CallEventDiagnostics.Display, modifier: Modifie
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     modifier = Modifier.padding(top = Spacing.xs)
                 )
+                TextButton(onClick = { copyRawJson(context, event.rawJson) }) {
+                    Text("Tap to copy raw JSON")
+                }
             }
         }
+    }
+}
+
+/** Copies the full raw JSON to the clipboard; Android 13+ shows its own "Copied" confirmation. */
+private fun copyRawJson(context: Context, rawJson: String) {
+    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText("Call log raw JSON", rawJson))
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        Toast.makeText(context, "Raw JSON copied", Toast.LENGTH_SHORT).show()
     }
 }

@@ -124,10 +124,25 @@ object CallNotificationExtras {
         }
     }
 
+    /**
+     * Person's own toString() is just "android.app.Person@hash", which hides the fields that can
+     * identify the caller (e.g. android.callPerson / android.people.list on Samsung's incallui,
+     * whose title and text are only a generic "Call"). Persons - alone or inside an array or list -
+     * are written out field by field instead.
+     */
     private fun stringifyExtraValue(value: Any?): String = when (value) {
         null -> "null"
-        is Array<*> -> value.joinToString(prefix = "[", postfix = "]") { it.toString() }
+        is Person -> describePerson(value)
+        is Array<*> -> value.joinToString(prefix = "[", postfix = "]") { stringifyExtraValue(it) }
+        is Collection<*> -> value.joinToString(prefix = "[", postfix = "]") { stringifyExtraValue(it) }
         else -> value.toString()
+    }
+
+    private fun describePerson(person: Person): String = try {
+        "Person{name=${person.name}, uri=${person.uri}, key=${person.key}, " +
+            "important=${person.isImportant}, bot=${person.isBot}, hasIcon=${person.icon != null}}"
+    } catch (t: Throwable) {
+        "Person{unreadable: ${t.javaClass.simpleName}}"
     }
 
     /** statusText of the last notification snapshot in [rawJson], or null if there is none. */
