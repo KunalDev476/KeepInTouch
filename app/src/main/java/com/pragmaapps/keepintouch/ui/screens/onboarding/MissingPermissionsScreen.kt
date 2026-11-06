@@ -11,12 +11,14 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -26,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.GppMaybe
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,9 +48,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
@@ -56,6 +61,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.pragmaapps.keepintouch.data.permissions.AppPermission
 import com.pragmaapps.keepintouch.data.permissions.AppPermissions
+import com.pragmaapps.keepintouch.ui.components.bottomFade
+import com.pragmaapps.keepintouch.ui.navigation.BottomBarFadeHeight
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import com.pragmaapps.keepintouch.ui.theme.extendedColors
 import kotlinx.coroutines.launch
@@ -108,10 +115,10 @@ fun MissingPermissionsScreen(onDone: () -> Unit) {
         if (pagerState.currentPage > 0) showPage(pagerState.currentPage - 1) else onDone()
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = Spacing.xl, vertical = Spacing.lg)) {
+    Column(Modifier.fillMaxSize().padding(Spacing.lg)) {
         HorizontalPager(state = pagerState, userScrollEnabled = false, modifier = Modifier.weight(1f)) { page ->
             if (page == 0) {
-                MissingPermissionsIntro(missing)
+                MissingPermissionsIntro(missing, onGrant = { showPage(1) }, onLater = onDone)
             } else {
                 val permission = missing[page - 1]
                 val blocked = permission.name in blockedNames
@@ -131,48 +138,89 @@ fun MissingPermissionsScreen(onDone: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(Spacing.lg))
-        if (pagerState.currentPage == 0) {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Button(onClick = { showPage(1) }, modifier = Modifier.fillMaxWidth()) { Text("Grant Permissions") }
-                OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Grant Later") }
-            }
-        } else {
+        if (pagerState.currentPage > 0) {
             val onLastPage = pagerState.currentPage == pageCount - 1
-            val goForward = { if (onLastPage) onDone() else showPage(pagerState.currentPage + 1) }
-            val forwardLabel = if (onLastPage) "Done" else "Next"
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            PagerDots(count = missing.size, current = pagerState.currentPage - 1)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 TextButton(onClick = { showPage(pagerState.currentPage - 1) }) { Text("Back") }
-                PagerDots(count = missing.size, current = pagerState.currentPage - 1, modifier = Modifier.weight(1f))
-                // The grant button is the main action until the permission is granted.
-                if (missing[pagerState.currentPage - 1] in granted) {
-                    Button(onClick = goForward) { Text(forwardLabel) }
-                } else {
-                    OutlinedButton(onClick = goForward) { Text(forwardLabel) }
+                Button(onClick = { if (onLastPage) onDone() else showPage(pagerState.currentPage + 1) }) {
+                    Text(if (onLastPage) "Done" else "Next")
                 }
             }
         }
     }
 }
 
+/**
+ * Keeps [footer] pinned to the bottom while [content] scrolls underneath it and fades out, the same
+ * way lists fade behind the bottom bar. Content is centred in the space above when it all fits.
+ */
 @Composable
-private fun MissingPermissionsIntro(missing: List<AppPermission>) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Spacer(Modifier.height(Spacing.xxxl))
-        Text("Some permissions are missing", style = MaterialTheme.typography.headlineMedium)
+private fun FadedScrollPage(footer: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val density = LocalDensity.current
+    var footerHeight by remember { mutableStateOf(0.dp) }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = maxHeight)
+                .padding(bottom = footerHeight + BottomBarFadeHeight),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            content = content
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .onSizeChanged { footerHeight = with(density) { it.height.toDp() } }
+                .bottomFade(MaterialTheme.colorScheme.background, BottomBarFadeHeight)
+        ) {
+            footer()
+        }
+    }
+}
+
+@Composable
+private fun MissingPermissionsIntro(missing: List<AppPermission>, onGrant: () -> Unit, onLater: () -> Unit) {
+    FadedScrollPage(
+        footer = {
+            Column(
+                Modifier.padding(bottom = Spacing.xxl),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) { Text("Grant Permissions") }
+                OutlinedButton(onClick = onLater, modifier = Modifier.fillMaxWidth()) { Text("Grant Later") }
+            }
+        }
+    ) {
+        PermissionsHero()
+        Text(
+            "Some permissions are missing",
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = Spacing.xl)
+        )
         Text(
             "The following permissions are needed for the app to work. Without these permissions, " +
                 "the app might not behave properly.",
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = Spacing.sm)
         )
-        Card(Modifier.fillMaxWidth().padding(top = Spacing.xxl)) {
+        Card(Modifier.fillMaxWidth().padding(top = Spacing.xl)) {
             missing.forEachIndexed { index, permission ->
                 if (index > 0) HorizontalDivider()
                 val content = permission.content()
                 Row(
-                    Modifier.fillMaxWidth().padding(Spacing.lg),
+                    Modifier.fillMaxWidth().padding(Spacing.md),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
@@ -191,73 +239,95 @@ private fun MissingPermissionsIntro(missing: List<AppPermission>) {
     }
 }
 
-/** The explanation scrolls, while what's at stake and the grant button stay put at the bottom. */
+/** A shield inside soft rings, drawn from the theme so it follows light, dark and dynamic colours. */
 @Composable
-private fun MissingPermissionPage(content: PermissionContent, granted: Boolean, ctaLabel: String, onCta: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            Spacer(Modifier.height(Spacing.xxxl))
-            if (granted) {
-                IconBadge(
-                    icon = Icons.Filled.CheckCircle,
-                    size = 64.dp,
-                    iconSize = 32.dp,
-                    background = MaterialTheme.extendedColors.successGreen.copy(alpha = 0.15f),
-                    tint = MaterialTheme.extendedColors.successGreen
-                )
-            } else {
-                IconBadge(content.icon, size = 64.dp, iconSize = 32.dp)
+private fun PermissionsHero() {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        Modifier.size(136.dp).background(colors.primaryContainer.copy(alpha = 0.35f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier.size(104.dp).background(colors.primaryContainer.copy(alpha = 0.7f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(Modifier.size(72.dp).background(colors.primary, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.GppMaybe, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(40.dp))
             }
-            Text(content.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = Spacing.lg))
-            Text(
-                content.why,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = Spacing.sm, bottom = Spacing.lg)
-            )
-        }
-
-        if (granted) {
-            Row(
-                Modifier.fillMaxWidth().height(48.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm, Alignment.CenterHorizontally)
-            ) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.extendedColors.successGreen)
-                Text("Granted", color = MaterialTheme.extendedColors.successGreen, style = MaterialTheme.typography.labelLarge)
-            }
-        } else {
-            Card(
-                Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            ) {
-                Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    Text(
-                        "Required for the app to work properly",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                    Text(
-                        content.withoutIt,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                }
-            }
-            Button(onClick = onCta, modifier = Modifier.fillMaxWidth().padding(top = Spacing.md)) { Text(ctaLabel) }
         }
     }
 }
 
+/** The explanation scrolls and fades, while what's at stake and the grant button stay put. */
 @Composable
-private fun IconBadge(
-    icon: ImageVector,
-    size: Dp,
-    iconSize: Dp,
-    background: Color = MaterialTheme.colorScheme.secondaryContainer,
-    tint: Color = MaterialTheme.colorScheme.onSecondaryContainer
-) {
-    Box(Modifier.size(size).background(background, CircleShape), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSize))
+private fun MissingPermissionPage(content: PermissionContent, granted: Boolean, ctaLabel: String, onCta: () -> Unit) {
+    FadedScrollPage(
+        footer = {
+            if (granted) {
+                Row(
+                    Modifier.fillMaxWidth().height(48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm, Alignment.CenterHorizontally)
+                ) {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.extendedColors.successGreen)
+                    Text("Granted", color = MaterialTheme.extendedColors.successGreen, style = MaterialTheme.typography.labelLarge)
+                }
+            } else {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(Spacing.md),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                    ) {
+                        Text(
+                            "Required for the app to work properly",
+                            style = MaterialTheme.typography.labelLarge,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Text(
+                            content.withoutIt,
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+                Button(onClick = onCta, modifier = Modifier.fillMaxWidth().padding(top = Spacing.md)) { Text(ctaLabel) }
+            }
+        }
+    ) {
+        IconBadge(content.icon, size = 88.dp, iconSize = 44.dp)
+        Text(
+            content.title,
+            style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = Spacing.xl)
+        )
+        Text(
+            content.why,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = Spacing.sm)
+        )
+    }
+}
+
+@Composable
+private fun IconBadge(icon: ImageVector, size: Dp, iconSize: Dp) {
+    Box(
+        Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(iconSize)
+        )
     }
 }
