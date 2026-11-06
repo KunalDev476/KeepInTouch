@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,15 +68,18 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pragmaapps.keepintouch.data.notification.ContactsChangeObserver
 import com.pragmaapps.keepintouch.data.notification.PhoneCallStateTracker
+import com.pragmaapps.keepintouch.data.permissions.AppPermissions
 import com.pragmaapps.keepintouch.data.prefs.OnboardingPreferences
 import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.ui.navigation.Destination
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
+import com.pragmaapps.keepintouch.ui.navigation.MissingPermissionsGate
 import com.pragmaapps.keepintouch.ui.navigation.Transitions
 import com.pragmaapps.keepintouch.ui.screens.confirm.ConfirmScreen
 import com.pragmaapps.keepintouch.ui.screens.contactdetail.ContactDetailScreen
 import com.pragmaapps.keepintouch.ui.screens.logs.AppLogsScreen
 import com.pragmaapps.keepintouch.ui.screens.logs.CallLogsScreen
+import com.pragmaapps.keepintouch.ui.screens.onboarding.MissingPermissionsScreen
 import com.pragmaapps.keepintouch.ui.screens.onboarding.OnboardingScreen
 import com.pragmaapps.keepintouch.ui.screens.people.PeopleScreen
 import com.pragmaapps.keepintouch.ui.screens.reminders.RemindersScreen
@@ -119,6 +123,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val onboardingDone = onboardingPreferences.completed.value
+        MissingPermissionsGate.onActivityCreated(isNewLaunch = savedInstanceState == null) {
+            onboardingDone && AppPermissions.missing(this).isNotEmpty()
+        }
         setContent {
             KeepInTouchTheme {
                 KeepInTouchRoot(startAtOnboarding = !onboardingDone)
@@ -328,6 +335,29 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
                 }
             }
         )
+    }
+
+    // Over the app rather than a nav route, so it also shows when Android restores a saved back
+    // stack, and the return-to-Today reset above can't dislodge it on the way back from Settings.
+    AnimatedVisibility(
+        visible = MissingPermissionsGate.showing,
+        exit = fadeOut(tween(260))
+    ) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Box(Modifier.systemBarsPadding()) {
+                MissingPermissionsScreen(
+                    onDone = {
+                        MissingPermissionsGate.dismiss()
+                        if (navController.currentDestination?.route != Destination.Today.route) {
+                            navController.navigate(Destination.Today.route) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    }
+                )
+            }
+        }
     }
 }
 

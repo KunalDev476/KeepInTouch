@@ -2,10 +2,6 @@
 
 package com.pragmaapps.keepintouch.ui.screens.onboarding
 
-import android.Manifest
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.tween
@@ -23,12 +19,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -47,10 +38,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.pragmaapps.keepintouch.data.permissions.AppPermission
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
-private const val PAGE_COUNT = 6
+/** The value-prop page, then one page per permission. */
+private val PAGE_COUNT = AppPermission.entries.size + 1
 
 @Composable
 fun OnboardingScreen(
@@ -71,111 +64,37 @@ fun OnboardingScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val contactsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        viewModel.refresh()
-    }
-    val postNotificationsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        viewModel.refresh()
-    }
-    val phoneStateLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.refresh()
     }
 
-    val currentPageGranted = when (pagerState.currentPage) {
-        0 -> true
-        1 -> uiState.contactsGranted
-        2 -> uiState.notificationListenerGranted
-        3 -> uiState.phoneStateGranted
-        4 -> uiState.postNotificationsGranted
-        else -> uiState.exactAlarmGranted
-    }
+    val currentPageGranted = pagerState.currentPage == 0 ||
+        AppPermission.entries[pagerState.currentPage - 1] in uiState.granted
 
     Column(Modifier.fillMaxSize().padding(Spacing.lg)) {
         // Scroll is button-driven only (userScrollEnabled = false) - a free swipe would let
         // someone skip past an ungranted permission page the same way the old Skip button did.
         HorizontalPager(state = pagerState, userScrollEnabled = false, modifier = Modifier.weight(1f)) { page ->
-            when (page) {
-                0 -> ValuePropPage()
-                1 -> PermissionPage(
-                    icon = Icons.Filled.Contacts,
-                    title = "Find who has WhatsApp",
-                    why = "We read your contacts, read-only, to see who's saved and who has WhatsApp linked. " +
-                        "Contact names and numbers are only ever used inside this app, to match them to your " +
-                        "schedules - nothing is sent off your device.",
-                    granted = uiState.contactsGranted,
-                    ctaLabel = "Grant Contacts access",
-                    onCta = { contactsLauncher.launch(Manifest.permission.READ_CONTACTS) }
-                )
-                2 -> PermissionPage(
-                    icon = Icons.Filled.Notifications,
-                    title = "Detect WhatsApp and phone calls",
-                    why = "Android requires notification access to let an app see call notifications - granted " +
-                        "from Settings, not a normal prompt. We only ever look at call notifications - from " +
-                        "WhatsApp, your phone's dialer, or another calling app; every other notification is " +
-                        "ignored immediately, unread. From a call notification we only read the caller's name (or " +
-                        "number) and whether the call is ringing, ongoing, or ended - never message text or chat " +
-                        "content. That's used only to mark a call as complete on a schedule you created; nothing " +
-                        "is sent off your device, and nothing is shared with us, WhatsApp, or anyone else. You can " +
-                        "revoke this any time from Settings > Apps > Special app access > Notification access.",
-                    granted = uiState.notificationListenerGranted,
-                    ctaLabel = "Open Settings",
-                    onCta = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-                )
-                3 -> PermissionPage(
-                    icon = Icons.Filled.Timer,
-                    title = "Measure phone call duration",
-                    why = "Some phones show no call notification while the full-screen call screen is open, so we " +
-                        "also check whether a phone call is ringing, in progress, or has ended - only to measure " +
-                        "how long it lasted. This never gives us the phone number, your call history, or anything " +
-                        "else, and nothing leaves your device.",
-                    granted = uiState.phoneStateGranted,
-                    ctaLabel = "Allow phone call status",
-                    onCta = { phoneStateLauncher.launch(Manifest.permission.READ_PHONE_STATE) }
-                )
-                4 -> PermissionPage(
-                    icon = Icons.Filled.NotificationsActive,
-                    title = "Show you reminders",
-                    why = "Needed to actually display reminder notifications - the important-call warning and the " +
-                        "daily pending-calls summary. These are notifications this app creates and shows only to " +
-                        "you; nothing is read from any other app here.",
-                    granted = uiState.postNotificationsGranted,
-                    ctaLabel = "Allow notifications",
-                    onCta = { postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
-                )
-                else -> PermissionPage(
-                    icon = Icons.Filled.Alarm,
-                    title = "Fire reminders exactly on time",
-                    why = "Lets an important call's 10-minutes-before warning fire at the exact moment, even in " +
-                        "Doze - granted from Settings, not a normal prompt. Only used to schedule this app's own " +
-                        "reminders; it doesn't give access to anything else on your device.",
-                    granted = uiState.exactAlarmGranted,
-                    ctaLabel = "Open Settings",
+            if (page == 0) {
+                ValuePropPage()
+            } else {
+                val permission = AppPermission.entries[page - 1]
+                val content = permission.content()
+                PermissionPage(
+                    icon = content.icon,
+                    title = content.title,
+                    why = content.why,
+                    granted = permission in uiState.granted,
+                    ctaLabel = content.ctaLabel,
                     onCta = {
-                        context.startActivity(
-                            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))
-                        )
+                        permission.runtimePermission?.let(permissionLauncher::launch)
+                            ?: context.startActivity(permission.settingsIntent(context))
                     }
                 )
             }
         }
 
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = Spacing.lg),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            repeat(PAGE_COUNT) { index ->
-                Box(
-                    Modifier
-                        .padding(horizontal = 4.dp)
-                        .size(if (pagerState.currentPage == index) 10.dp else 8.dp)
-                        .background(
-                            if (pagerState.currentPage == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            CircleShape
-                        )
-                )
-            }
-        }
+        PagerDots(count = PAGE_COUNT, current = pagerState.currentPage)
 
         Row(
             Modifier.fillMaxWidth(),
@@ -204,6 +123,27 @@ fun OnboardingScreen(
 }
 
 @Composable
+internal fun PagerDots(count: Int, current: Int) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = Spacing.lg),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(count) { index ->
+            Box(
+                Modifier
+                    .padding(horizontal = 4.dp)
+                    .size(if (current == index) 10.dp else 8.dp)
+                    .background(
+                        if (current == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        CircleShape
+                    )
+            )
+        }
+    }
+}
+
+@Composable
 private fun ValuePropPage() {
     Column(
         Modifier.fillMaxSize(),
@@ -222,13 +162,14 @@ private fun ValuePropPage() {
 }
 
 @Composable
-private fun PermissionPage(
+internal fun PermissionPage(
     icon: ImageVector,
     title: String,
     why: String,
     granted: Boolean,
     ctaLabel: String,
-    onCta: () -> Unit
+    onCta: () -> Unit,
+    consequence: String? = null
 ) {
     Column(
         Modifier.fillMaxSize(),
@@ -249,6 +190,15 @@ private fun PermissionPage(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = Spacing.sm, bottom = Spacing.lg)
         )
+        if (consequence != null && !granted) {
+            Text(
+                consequence,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = Spacing.lg)
+            )
+        }
         if (!granted) {
             Button(onClick = onCta) { Text(ctaLabel) }
         } else {

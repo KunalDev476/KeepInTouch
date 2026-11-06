@@ -104,6 +104,16 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Sets important-call reminders as soon as exact alarms are allowed, since any skipped
+             while they weren't allowed would otherwise wait for the next reboot. -->
+        <receiver
+            android:name=".data.reminder.ExactAlarmPermissionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
