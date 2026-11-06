@@ -51,6 +51,7 @@ import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.ui.components.EmptyState
 import com.pragmaapps.keepintouch.ui.components.LoadingSkeleton
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
+import com.pragmaapps.keepintouch.ui.navigation.LocalBottomBarInset
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 
 @Composable
@@ -85,7 +86,10 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddPicker = true }) {
+            FloatingActionButton(
+                onClick = { showAddPicker = true },
+                modifier = Modifier.padding(bottom = LocalBottomBarInset.current)
+            ) {
                 Icon(Icons.Filled.Add, contentDescription = "Add reminder time")
             }
         }
@@ -127,10 +131,17 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
                     icon = Icons.Filled.Add,
                     title = "No reminder times yet",
                     subtitle = "Tap + to add one.",
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)
                 )
             } else {
-                LazyColumn(contentPadding = PaddingValues(horizontal = Spacing.lg, vertical = Spacing.sm)) {
+                LazyColumn(
+                    contentPadding = PaddingValues(
+                        start = Spacing.lg,
+                        end = Spacing.lg,
+                        top = Spacing.sm,
+                        bottom = Spacing.sm + LocalBottomBarInset.current
+                    )
+                ) {
                     items(uiState.reminders, key = { it.id }) { reminder ->
                         ReminderRow(
                             reminder = reminder,

@@ -66,6 +66,7 @@ import com.pragmaapps.keepintouch.ui.components.LoadingSkeleton
 import com.pragmaapps.keepintouch.ui.components.SegmentedControl
 import com.pragmaapps.keepintouch.ui.components.label
 import com.pragmaapps.keepintouch.ui.components.verticalScrollbar
+import com.pragmaapps.keepintouch.ui.navigation.LocalBottomBarInset
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import com.pragmaapps.keepintouch.ui.theme.extendedColors
 
@@ -106,7 +107,10 @@ fun PeopleScreen(
             // Only once there's something to browse in Call Schedules - with zero schedules, the
             // segment's own EmptyState already tells you to switch to All contacts and tap +.
             if (uiState.segment == PeopleSegment.SCHEDULED && uiState.scheduledRows.isNotEmpty()) {
-                FloatingActionButton(onClick = { viewModel.onSegmentChange(PeopleSegment.ALL) }) {
+                FloatingActionButton(
+                    onClick = { viewModel.onSegmentChange(PeopleSegment.ALL) },
+                    modifier = Modifier.padding(bottom = LocalBottomBarInset.current)
+                ) {
                     Icon(Icons.Filled.Add, contentDescription = "Add someone to call")
                 }
             }
@@ -236,7 +240,7 @@ private fun ContactsPermissionPrompt(onGrant: () -> Unit) {
         subtitle = "KeepInTouch reads your contacts (read-only) to find who has WhatsApp and let you schedule them.",
         actionLabel = "Grant access",
         onAction = onGrant,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)
     )
 }
 
@@ -248,7 +252,7 @@ private fun ScheduledList(
 ) {
     if (rows.isEmpty()) {
         // Centered in the space below the segmented control, rather than pinned to its top.
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current), contentAlignment = Alignment.Center) {
             EmptyState(
                 icon = Icons.Filled.People,
                 title = "No one scheduled yet",
@@ -260,7 +264,7 @@ private fun ScheduledList(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().verticalScrollbar(listState),
-        contentPadding = PaddingValues(bottom = Spacing.xxl)
+        contentPadding = PaddingValues(bottom = Spacing.xxl + LocalBottomBarInset.current)
     ) {
         items(rows, key = { it.schedule.id }) { row ->
             Column(Modifier.animateItem()) {
@@ -354,14 +358,14 @@ private fun AllContactsList(
             icon = Icons.Filled.People,
             title = "No contacts synced yet",
             subtitle = "Pull down or reopen this tab once Contacts access is granted.",
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)
         )
         return
     }
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().verticalScrollbar(listState),
-        contentPadding = PaddingValues(bottom = Spacing.xxl)
+        contentPadding = PaddingValues(bottom = Spacing.xxl + LocalBottomBarInset.current)
     ) {
         items(rows, key = { it.contact.lookupKey }) { row ->
             Column(Modifier.animateItem()) {

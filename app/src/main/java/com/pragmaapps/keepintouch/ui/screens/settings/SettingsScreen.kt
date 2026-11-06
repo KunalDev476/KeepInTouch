@@ -54,6 +54,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.pragmaapps.keepintouch.ui.components.PermissionStatusCard
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
+import com.pragmaapps.keepintouch.ui.navigation.LocalBottomBarInset
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 import com.pragmaapps.keepintouch.ui.theme.extendedColors
 
@@ -87,7 +88,7 @@ fun SettingsScreen(
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = Spacing.lg, end = Spacing.lg, top = 0.dp, bottom = Spacing.lg)
+            contentPadding = PaddingValues(start = Spacing.lg, end = Spacing.lg, top = 0.dp, bottom = Spacing.lg + LocalBottomBarInset.current)
         ) {
             item {
                 Text(

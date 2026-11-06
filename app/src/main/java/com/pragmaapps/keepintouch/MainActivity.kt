@@ -24,10 +24,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -42,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -73,6 +80,7 @@ import com.pragmaapps.keepintouch.data.prefs.OnboardingPreferences
 import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.ui.navigation.Destination
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
+import com.pragmaapps.keepintouch.ui.navigation.LocalBottomBarInset
 import com.pragmaapps.keepintouch.ui.navigation.MissingPermissionsGate
 import com.pragmaapps.keepintouch.ui.navigation.Transitions
 import com.pragmaapps.keepintouch.ui.screens.confirm.ConfirmScreen
@@ -214,109 +222,124 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
             }
         }
     ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = if (startAtOnboarding) ROUTE_ONBOARDING else Destination.Today.route,
-            modifier = Modifier.padding(padding)
-        ) {
-            composable(
-                ROUTE_ONBOARDING,
-                enterTransition = { fadeIn(androidx.compose.animation.core.tween(260)) },
-                exitTransition = { fadeOut(androidx.compose.animation.core.tween(260)) }
+        // With the bar showing, tab screens run to the bottom of the screen so their lists stay
+        // visible around the island, and pad themselves using LocalBottomBarInset.
+        val layoutDirection = LocalLayoutDirection.current
+        val sidesAndTop = Modifier.padding(
+            start = padding.calculateStartPadding(layoutDirection),
+            top = padding.calculateTopPadding(),
+            end = padding.calculateEndPadding(layoutDirection)
+        )
+        val bottom = if (showBottomBar) {
+            Modifier.consumeWindowInsets(WindowInsets.navigationBars)
+        } else {
+            Modifier.navigationBarsPadding()
+        }
+        CompositionLocalProvider(LocalBottomBarInset provides padding.calculateBottomPadding()) {
+            NavHost(
+                navController = navController,
+                startDestination = if (startAtOnboarding) ROUTE_ONBOARDING else Destination.Today.route,
+                modifier = sidesAndTop.then(bottom)
             ) {
-                OnboardingScreen(onDone = {
-                    navController.navigate(Destination.Today.route) {
-                        popUpTo(ROUTE_ONBOARDING) { inclusive = true }
-                    }
-                })
-            }
-            composable(
-                Destination.Today.route,
-                enterTransition = { Transitions.tabEnter() },
-                exitTransition = { Transitions.tabExit() },
-                popEnterTransition = { Transitions.tabEnter() },
-                popExitTransition = { Transitions.tabExit() }
-            ) {
-                TodayScreen(onOpenConfirm = { navController.navigate(ROUTE_CONFIRM) })
-            }
-            composable(
-                Destination.People.route,
-                enterTransition = { Transitions.tabEnter() },
-                exitTransition = { Transitions.tabExit() },
-                popEnterTransition = { Transitions.tabEnter() },
-                popExitTransition = { Transitions.tabExit() }
-            ) {
-                PeopleScreen(
-                    onScheduleContact = { lookupKey -> scheduleSheetArgs = ScheduleSheetArgs.ForNewContact(lookupKey) },
-                    onOpenContact = { lookupKey -> navController.navigate(contactDetailRoute(lookupKey)) },
-                    resetToScheduledSignal = peopleResetSignal
-                )
-            }
-            composable(
-                Destination.Settings.route,
-                enterTransition = { Transitions.tabEnter() },
-                exitTransition = { Transitions.tabExit() },
-                popEnterTransition = { Transitions.tabEnter() },
-                popExitTransition = { Transitions.tabExit() }
-            ) {
-                SettingsScreen(
-                    onOpenAppLogs = { navController.navigate(ROUTE_APP_LOGS) },
-                    onOpenCallLogs = { navController.navigate(ROUTE_CALL_LOGS) },
-                    onOpenReminders = { navController.navigate(ROUTE_REMINDERS) }
-                )
-            }
-            composable(
-                ROUTE_APP_LOGS,
-                enterTransition = { Transitions.pushEnter() },
-                exitTransition = { Transitions.pushExit() },
-                popEnterTransition = { Transitions.popEnter() },
-                popExitTransition = { Transitions.popExit() }
-            ) {
-                AppLogsScreen(onBack = { navController.popBackStack() })
-            }
-            composable(
-                ROUTE_CALL_LOGS,
-                enterTransition = { Transitions.pushEnter() },
-                exitTransition = { Transitions.pushExit() },
-                popEnterTransition = { Transitions.popEnter() },
-                popExitTransition = { Transitions.popExit() }
-            ) {
-                CallLogsScreen(onBack = { navController.popBackStack() })
-            }
-            composable(
-                ROUTE_REMINDERS,
-                enterTransition = { Transitions.pushEnter() },
-                exitTransition = { Transitions.pushExit() },
-                popEnterTransition = { Transitions.popEnter() },
-                popExitTransition = { Transitions.popExit() }
-            ) {
-                RemindersScreen(onBack = { navController.popBackStack() })
-            }
-            composable(
-                ROUTE_CONFIRM,
-                enterTransition = { Transitions.pushEnter() },
-                exitTransition = { Transitions.pushExit() },
-                popEnterTransition = { Transitions.popEnter() },
-                popExitTransition = { Transitions.popExit() }
-            ) {
-                ConfirmScreen(
-                    onBack = { navController.popBackStack() }
-                )
-            }
-            composable(
-                route = ROUTE_CONTACT_DETAIL,
-                arguments = listOf(navArgument("lookupKey") { type = NavType.StringType }),
-                enterTransition = { Transitions.pushEnter() },
-                exitTransition = { Transitions.pushExit() },
-                popEnterTransition = { Transitions.popEnter() },
-                popExitTransition = { Transitions.popExit() }
-            ) { entry ->
-                val lookupKey = entry.arguments?.getString("lookupKey").orEmpty()
-                ContactDetailScreen(
-                    lookupKey = lookupKey,
-                    onBack = { navController.popBackStack() },
-                    onEditSchedule = { scheduleId -> scheduleSheetArgs = ScheduleSheetArgs.ForExistingSchedule(scheduleId) }
-                )
+                composable(
+                    ROUTE_ONBOARDING,
+                    enterTransition = { fadeIn(androidx.compose.animation.core.tween(260)) },
+                    exitTransition = { fadeOut(androidx.compose.animation.core.tween(260)) }
+                ) {
+                    OnboardingScreen(onDone = {
+                        navController.navigate(Destination.Today.route) {
+                            popUpTo(ROUTE_ONBOARDING) { inclusive = true }
+                        }
+                    })
+                }
+                composable(
+                    Destination.Today.route,
+                    enterTransition = { Transitions.tabEnter() },
+                    exitTransition = { Transitions.tabExit() },
+                    popEnterTransition = { Transitions.tabEnter() },
+                    popExitTransition = { Transitions.tabExit() }
+                ) {
+                    TodayScreen(onOpenConfirm = { navController.navigate(ROUTE_CONFIRM) })
+                }
+                composable(
+                    Destination.People.route,
+                    enterTransition = { Transitions.tabEnter() },
+                    exitTransition = { Transitions.tabExit() },
+                    popEnterTransition = { Transitions.tabEnter() },
+                    popExitTransition = { Transitions.tabExit() }
+                ) {
+                    PeopleScreen(
+                        onScheduleContact = { lookupKey -> scheduleSheetArgs = ScheduleSheetArgs.ForNewContact(lookupKey) },
+                        onOpenContact = { lookupKey -> navController.navigate(contactDetailRoute(lookupKey)) },
+                        resetToScheduledSignal = peopleResetSignal
+                    )
+                }
+                composable(
+                    Destination.Settings.route,
+                    enterTransition = { Transitions.tabEnter() },
+                    exitTransition = { Transitions.tabExit() },
+                    popEnterTransition = { Transitions.tabEnter() },
+                    popExitTransition = { Transitions.tabExit() }
+                ) {
+                    SettingsScreen(
+                        onOpenAppLogs = { navController.navigate(ROUTE_APP_LOGS) },
+                        onOpenCallLogs = { navController.navigate(ROUTE_CALL_LOGS) },
+                        onOpenReminders = { navController.navigate(ROUTE_REMINDERS) }
+                    )
+                }
+                composable(
+                    ROUTE_APP_LOGS,
+                    enterTransition = { Transitions.pushEnter() },
+                    exitTransition = { Transitions.pushExit() },
+                    popEnterTransition = { Transitions.popEnter() },
+                    popExitTransition = { Transitions.popExit() }
+                ) {
+                    AppLogsScreen(onBack = { navController.popBackStack() })
+                }
+                composable(
+                    ROUTE_CALL_LOGS,
+                    enterTransition = { Transitions.pushEnter() },
+                    exitTransition = { Transitions.pushExit() },
+                    popEnterTransition = { Transitions.popEnter() },
+                    popExitTransition = { Transitions.popExit() }
+                ) {
+                    CallLogsScreen(onBack = { navController.popBackStack() })
+                }
+                composable(
+                    ROUTE_REMINDERS,
+                    enterTransition = { Transitions.pushEnter() },
+                    exitTransition = { Transitions.pushExit() },
+                    popEnterTransition = { Transitions.popEnter() },
+                    popExitTransition = { Transitions.popExit() }
+                ) {
+                    RemindersScreen(onBack = { navController.popBackStack() })
+                }
+                composable(
+                    ROUTE_CONFIRM,
+                    enterTransition = { Transitions.pushEnter() },
+                    exitTransition = { Transitions.pushExit() },
+                    popEnterTransition = { Transitions.popEnter() },
+                    popExitTransition = { Transitions.popExit() }
+                ) {
+                    ConfirmScreen(
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable(
+                    route = ROUTE_CONTACT_DETAIL,
+                    arguments = listOf(navArgument("lookupKey") { type = NavType.StringType }),
+                    enterTransition = { Transitions.pushEnter() },
+                    exitTransition = { Transitions.pushExit() },
+                    popEnterTransition = { Transitions.popEnter() },
+                    popExitTransition = { Transitions.popExit() }
+                ) { entry ->
+                    val lookupKey = entry.arguments?.getString("lookupKey").orEmpty()
+                    ContactDetailScreen(
+                        lookupKey = lookupKey,
+                        onBack = { navController.popBackStack() },
+                        onEditSchedule = { scheduleId -> scheduleSheetArgs = ScheduleSheetArgs.ForExistingSchedule(scheduleId) }
+                    )
+                }
             }
         }
     }

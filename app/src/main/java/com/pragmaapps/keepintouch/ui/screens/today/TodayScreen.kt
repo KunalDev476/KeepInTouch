@@ -72,6 +72,7 @@ import com.pragmaapps.keepintouch.ui.components.rememberSkeletonColor
 import com.pragmaapps.keepintouch.ui.components.ProgressRing
 import com.pragmaapps.keepintouch.ui.components.RecurrenceChip
 import com.pragmaapps.keepintouch.ui.components.ScheduleStatusIcon
+import com.pragmaapps.keepintouch.ui.navigation.LocalBottomBarInset
 import com.pragmaapps.keepintouch.ui.theme.Spacing
 
 @Composable
@@ -162,7 +163,7 @@ private fun TodayContent(
                 icon = Icons.Filled.CheckCircle,
                 title = "Nothing due today",
                 subtitle = "Schedule someone from the People tab to see them here.",
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)
             )
         } else {
             Text(
@@ -171,7 +172,7 @@ private fun TodayContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs)
             )
-            LazyColumn(contentPadding = PaddingValues(bottom = Spacing.xxl)) {
+            LazyColumn(contentPadding = PaddingValues(bottom = Spacing.xxl + LocalBottomBarInset.current)) {
                 items(uiState.items, key = { it.schedule.id }) { item ->
                     Column(Modifier.animateItem()) {
                         TodaySwipeableRow(
