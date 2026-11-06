@@ -56,7 +56,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -78,6 +82,7 @@ import com.pragmaapps.keepintouch.data.notification.PhoneCallStateTracker
 import com.pragmaapps.keepintouch.data.permissions.AppPermissions
 import com.pragmaapps.keepintouch.data.prefs.OnboardingPreferences
 import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
+import com.pragmaapps.keepintouch.ui.navigation.BottomBarFadeHeight
 import com.pragmaapps.keepintouch.ui.navigation.Destination
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.navigation.LocalBottomBarInset
@@ -235,7 +240,7 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
         } else {
             Modifier.navigationBarsPadding()
         }
-        CompositionLocalProvider(LocalBottomBarInset provides padding.calculateBottomPadding()) {
+        CompositionLocalProvider(LocalBottomBarInset provides padding.calculateBottomPadding() + BottomBarFadeHeight) {
             NavHost(
                 navController = navController,
                 startDestination = if (startAtOnboarding) ROUTE_ONBOARDING else Destination.Today.route,
@@ -406,9 +411,28 @@ private fun AppBottomBar(navController: NavHostController) {
         .indexOfFirst { it.route == currentRoute }
         .coerceAtLeast(0)
 
+    // Lists fade out into the screen's background as they run under the island. Drawn, not laid
+    // out, so it can start above the bar's own bounds and never takes touches from the list.
+    val fadeColor = MaterialTheme.colorScheme.background
     Box(
         Modifier
             .fillMaxWidth()
+            .drawBehind {
+                val fadeHeight = BottomBarFadeHeight.toPx()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to fadeColor.copy(alpha = 0f),
+                        0.15f to fadeColor.copy(alpha = 0.4f),
+                        0.35f to fadeColor.copy(alpha = 0.82f),
+                        0.5f to fadeColor.copy(alpha = 0.95f),
+                        0.65f to fadeColor,
+                        startY = -fadeHeight,
+                        endY = size.height
+                    ),
+                    topLeft = Offset(0f, -fadeHeight),
+                    size = Size(size.width, size.height + fadeHeight)
+                )
+            }
             .navigationBarsPadding()
             .padding(horizontal = Spacing.lg, vertical = Spacing.sm)
     ) {

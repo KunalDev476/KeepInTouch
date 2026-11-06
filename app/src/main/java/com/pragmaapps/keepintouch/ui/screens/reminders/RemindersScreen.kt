@@ -88,7 +88,7 @@ fun RemindersScreen(onBack: () -> Unit, viewModel: RemindersViewModel = hiltView
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddPicker = true },
-                modifier = Modifier.padding(bottom = LocalBottomBarInset.current)
+                modifier = Modifier.padding(bottom = LocalBottomBarInset.current - Spacing.lg)
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "Add reminder time")
             }

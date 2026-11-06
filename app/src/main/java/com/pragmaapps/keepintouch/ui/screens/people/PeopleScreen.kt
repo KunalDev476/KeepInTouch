@@ -109,7 +109,7 @@ fun PeopleScreen(
             if (uiState.segment == PeopleSegment.SCHEDULED && uiState.scheduledRows.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = { viewModel.onSegmentChange(PeopleSegment.ALL) },
-                    modifier = Modifier.padding(bottom = LocalBottomBarInset.current)
+                    modifier = Modifier.padding(bottom = LocalBottomBarInset.current - Spacing.lg)
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Add someone to call")
                 }
