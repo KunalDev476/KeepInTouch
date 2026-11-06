@@ -16,8 +16,9 @@ import com.pragmaapps.keepintouch.data.permissions.AppPermission
 /** What a permission's screen says, shared by first-time onboarding and the missing-permissions flow. */
 internal data class PermissionContent(
     val icon: ImageVector,
-    /** Short name for the list on the missing-permissions intro. */
+    /** Short name and what it's for, for the list on the missing-permissions intro. */
     val name: String,
+    val purpose: String,
     val title: String,
     val why: String,
     val ctaLabel: String,
@@ -29,17 +30,18 @@ internal fun AppPermission.content(): PermissionContent = when (this) {
     AppPermission.CONTACTS -> PermissionContent(
         icon = Icons.Filled.Contacts,
         name = "Contacts",
+        purpose = "Lets you choose who to schedule",
         title = "Find who has WhatsApp",
         why = "We read your contacts, read-only, to see who's saved and who has WhatsApp linked. " +
             "Contact names and numbers are only ever used inside this app, to match them to your " +
             "schedules - nothing is sent off your device.",
         ctaLabel = "Grant Contacts access",
-        withoutIt = "Required for the app to work properly. Without it, you can't add people to " +
-            "schedules, and contact name changes won't update."
+        withoutIt = "Without it, you can't add people to schedules, and contact name changes won't update."
     )
     AppPermission.NOTIFICATION_ACCESS -> PermissionContent(
         icon = Icons.Filled.Notifications,
         name = "Notification access",
+        purpose = "Detects calls to complete your schedules",
         title = "Detect WhatsApp and phone calls",
         why = "Android requires notification access to let an app see call notifications - granted " +
             "from Settings, not a normal prompt. We only ever look at call notifications - from " +
@@ -50,42 +52,41 @@ internal fun AppPermission.content(): PermissionContent = when (this) {
             "is sent off your device, and nothing is shared with us, WhatsApp, or anyone else. You can " +
             "revoke this any time from Settings > Apps > Special app access > Notification access.",
         ctaLabel = "Open Settings",
-        withoutIt = "Required for the app to work properly. Without it, calls can't be detected, so " +
-            "schedules won't be marked completed automatically."
+        withoutIt = "Without it, calls can't be detected, so schedules won't be marked completed automatically."
     )
     AppPermission.PHONE_STATE -> PermissionContent(
         icon = Icons.Filled.Timer,
         name = "Phone call status",
+        purpose = "Measures how long phone calls last",
         title = "Measure phone call duration",
         why = "Some phones show no call notification while the full-screen call screen is open, so we " +
             "also check whether a phone call is ringing, in progress, or has ended - only to measure " +
             "how long it lasted. This never gives us the phone number, your call history, or anything " +
             "else, and nothing leaves your device.",
         ctaLabel = "Allow phone call status",
-        withoutIt = "Required for the app to work properly. Without it, phone calls on some phones " +
-            "may not be marked completed automatically."
+        withoutIt = "Without it, phone calls on some phones may not be marked completed automatically."
     )
     AppPermission.POST_NOTIFICATIONS -> PermissionContent(
         icon = Icons.Filled.NotificationsActive,
         name = "Notifications",
+        purpose = "Shows your reminders",
         title = "Show you reminders",
         why = "Needed to actually display reminder notifications - the important-call warning and the " +
             "daily pending-calls summary. These are notifications this app creates and shows only to " +
             "you; nothing is read from any other app here.",
         ctaLabel = "Allow notifications",
-        withoutIt = "Required for the app to work properly. Without it, you won't get reminders or " +
-            "the prompt to mark a call complete."
+        withoutIt = "Without it, you won't get reminders or the prompt to mark a call complete."
     )
     AppPermission.EXACT_ALARM -> PermissionContent(
         icon = Icons.Filled.Alarm,
         name = "Exact alarms",
+        purpose = "Sends reminders right on time",
         title = "Fire reminders exactly on time",
         why = "Lets an important call's 10-minutes-before warning fire at the exact moment, even in " +
             "Doze - granted from Settings, not a normal prompt. Only used to schedule this app's own " +
             "reminders; it doesn't give access to anything else on your device.",
         ctaLabel = "Open Settings",
-        withoutIt = "Required for the app to work properly. Without it, important-call reminders " +
-            "won't be set."
+        withoutIt = "Without it, important-call reminders won't be set."
     )
 }
 

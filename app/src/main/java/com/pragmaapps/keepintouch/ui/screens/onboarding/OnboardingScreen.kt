@@ -123,9 +123,13 @@ fun OnboardingScreen(
 }
 
 @Composable
-internal fun PagerDots(count: Int, current: Int) {
+internal fun PagerDots(
+    count: Int,
+    current: Int,
+    modifier: Modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.lg)
+) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = Spacing.lg),
+        modifier,
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -162,14 +166,13 @@ private fun ValuePropPage() {
 }
 
 @Composable
-internal fun PermissionPage(
+private fun PermissionPage(
     icon: ImageVector,
     title: String,
     why: String,
     granted: Boolean,
     ctaLabel: String,
-    onCta: () -> Unit,
-    consequence: String? = null
+    onCta: () -> Unit
 ) {
     Column(
         Modifier.fillMaxSize(),
@@ -190,15 +193,6 @@ internal fun PermissionPage(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = Spacing.sm, bottom = Spacing.lg)
         )
-        if (consequence != null && !granted) {
-            Text(
-                consequence,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(bottom = Spacing.lg)
-            )
-        }
         if (!granted) {
             Button(onClick = onCta) { Text(ctaLabel) }
         } else {
