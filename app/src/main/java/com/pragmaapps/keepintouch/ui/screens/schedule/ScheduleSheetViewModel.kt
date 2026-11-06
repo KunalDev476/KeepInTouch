@@ -18,6 +18,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+private const val MILLIS_PER_MINUTE = 60_000L
+private const val PAST_DATE_ERROR = "Pick today or a later date"
+private const val PAST_TIME_ERROR = "Pick a time later than now"
+
 /** Sheet operates on exactly one of these - a brand-new contact, or an existing schedule to edit. */
 sealed class ScheduleSheetArgs {
     data class ForNewContact(val contactLookupKey: String) : ScheduleSheetArgs()
@@ -37,7 +41,11 @@ data class ScheduleSheetUiState(
     /** Minutes since midnight, e.g. 10:00am = 600. Null = no specific call time set. */
     val preferredTimeMinutes: Int? = null,
     /** Window end, minutes since midnight. Only meaningful alongside [preferredTimeMinutes]. */
-    val comfortableTimeEndMinutes: Int? = null
+    val comfortableTimeEndMinutes: Int? = null,
+    /** Blocks saving: the due date, or a one-time schedule's time today, is already in the past. */
+    val timeError: String? = null,
+    /** Doesn't block saving: a recurring schedule's time has passed today, so it moves to its next date on save. */
+    val pastTimeWarning: String? = null
 ) {
     /** "Must not be missed" is derived automatically from having a call time set - not a separate manual toggle. */
     val isImportant: Boolean get() = preferredTimeMinutes != null
@@ -78,6 +86,46 @@ class ScheduleSheetViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ScheduleSheetUiState())
     val uiState: StateFlow<ScheduleSheetUiState> = _uiState.asStateFlow()
+
+    /**
+     * A new schedule always counts as changed. An existing one only does once its date or time
+     * differs from what's saved, so an overdue schedule stays exactly as it is until the user
+     * touches those, and putting the original values back clears any warning again.
+     */
+    private fun dateOrTimeChanged(state: ScheduleSheetUiState): Boolean {
+        val existing = existingSchedule ?: return true
+        return DateMath.startOfDayMillis(state.nextDueDate) != DateMath.startOfDayMillis(existing.nextDueDate) ||
+            state.preferredTimeMinutes != existing.preferredTimeMinutes ||
+            state.comfortableTimeEndMinutes != existing.comfortableTimeEndMinutes
+    }
+
+    /** Due today with its call time, or its whole window, already gone. The current minute counts as gone. */
+    private fun timeHasPassedToday(state: ScheduleSheetUiState, now: Long): Boolean {
+        val lastMinute = state.comfortableTimeEndMinutes ?: state.preferredTimeMinutes ?: return false
+        val dueDay = DateMath.startOfDayMillis(state.nextDueDate)
+        return dueDay == DateMath.startOfDayMillis(now) && dueDay + lastMinute * MILLIS_PER_MINUTE <= now
+    }
+
+    private fun blocksOneTimeSchedule(state: ScheduleSheetUiState, now: Long): Boolean =
+        state.recurrence == Recurrence.ONE_TIME && dateOrTimeChanged(state) && timeHasPassedToday(state, now)
+
+    private fun withTimeChecks(state: ScheduleSheetUiState, now: Long = System.currentTimeMillis()): ScheduleSheetUiState {
+        val movesToNextDate = state.recurrence != Recurrence.ONE_TIME &&
+            dateOrTimeChanged(state) && timeHasPassedToday(state, now)
+        val warning = if (movesToNextDate) {
+            val nextDate = DateMath.formatDate(RecurrenceEngine.defaultNextDueDate(state.recurrence, now))
+            "This time has passed for today, so this schedule will start on $nextDate."
+        } else {
+            null
+        }
+        return state.copy(timeError = null, pastTimeWarning = warning)
+    }
+
+    /** For the call-time dialog's OK button: why this time can't be picked, or null if it's fine. */
+    fun callTimeError(start: Int, end: Int?): String? {
+        val candidate = _uiState.value.copy(preferredTimeMinutes = start, comfortableTimeEndMinutes = end)
+        return if (blocksOneTimeSchedule(candidate, System.currentTimeMillis())) PAST_TIME_ERROR else null
+    }
 
     fun load(args: ScheduleSheetArgs) {
         if (loadedFor == args) return
@@ -126,11 +174,11 @@ class ScheduleSheetViewModel @Inject constructor(
         } else {
             RecurrenceEngine.defaultNextDueDate(recurrence, System.currentTimeMillis())
         }
-        _uiState.value = state.copy(recurrence = recurrence, nextDueDate = nextDueDate)
+        _uiState.value = withTimeChecks(state.copy(recurrence = recurrence, nextDueDate = nextDueDate))
     }
 
     fun onDueDateChange(epochMillis: Long) {
-        _uiState.value = _uiState.value.copy(nextDueDate = DateMath.startOfDayMillis(epochMillis))
+        _uiState.value = withTimeChecks(_uiState.value.copy(nextDueDate = DateMath.startOfDayMillis(epochMillis)))
     }
 
     fun onNoteChange(note: String) {
@@ -143,15 +191,40 @@ class ScheduleSheetViewModel @Inject constructor(
      * once with an already-consistent pair - [end] is never non-null while [start] is null.
      */
     fun onCallTimeChange(start: Int?, end: Int?) {
-        _uiState.value = _uiState.value.copy(
-            preferredTimeMinutes = start,
-            comfortableTimeEndMinutes = if (start != null) end else null
+        _uiState.value = withTimeChecks(
+            _uiState.value.copy(
+                preferredTimeMinutes = start,
+                comfortableTimeEndMinutes = if (start != null) end else null
+            )
         )
     }
 
     fun save() {
-        val state = _uiState.value
+        val now = System.currentTimeMillis()
+        val state = withTimeChecks(_uiState.value, now)
         val contact = state.contact ?: return
+
+        val dueDatePassed = dateOrTimeChanged(state) &&
+            DateMath.startOfDayMillis(state.nextDueDate) < DateMath.startOfDayMillis(now)
+        val error = when {
+            dueDatePassed -> PAST_DATE_ERROR
+            blocksOneTimeSchedule(state, now) -> PAST_TIME_ERROR
+            else -> null
+        }
+        if (error != null) {
+            _uiState.value = state.copy(timeError = error)
+            return
+        }
+        // The time can pass while the sheet sits open: show the warning before moving the date.
+        if (state.pastTimeWarning != null && _uiState.value.pastTimeWarning == null) {
+            _uiState.value = state
+            return
+        }
+        val dueDate = if (state.pastTimeWarning != null) {
+            RecurrenceEngine.defaultNextDueDate(state.recurrence, now)
+        } else {
+            state.nextDueDate
+        }
 
         viewModelScope.launch {
             val existing = existingSchedule
@@ -159,7 +232,7 @@ class ScheduleSheetViewModel @Inject constructor(
                 scheduleRepository.update(
                     existing.copy(
                         recurrence = state.recurrence,
-                        nextDueDate = state.nextDueDate,
+                        nextDueDate = dueDate,
                         note = state.note.ifBlank { null },
                         preferredTimeMinutes = state.preferredTimeMinutes,
                         isImportant = state.isImportant,
@@ -185,8 +258,8 @@ class ScheduleSheetViewModel @Inject constructor(
             scheduleRepository.createSchedule(
                 contact = contact,
                 recurrence = state.recurrence,
-                startDate = state.nextDueDate,
-                nextDueDate = state.nextDueDate,
+                startDate = dueDate,
+                nextDueDate = dueDate,
                 note = state.note.ifBlank { null },
                 preferredTimeMinutes = state.preferredTimeMinutes,
                 isImportant = state.isImportant,

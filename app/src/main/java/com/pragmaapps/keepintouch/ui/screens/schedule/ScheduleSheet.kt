@@ -50,6 +50,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -82,6 +83,9 @@ import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.components.SegmentedControl
 import com.pragmaapps.keepintouch.ui.components.label
 import com.pragmaapps.keepintouch.ui.theme.Spacing
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlinx.coroutines.launch
 
 /** Latest minute-of-day a time picker can express (23:59). */
@@ -286,6 +290,7 @@ fun ScheduleSheet(
                             CallTimePicker(
                                 startMinutes = uiState.preferredTimeMinutes,
                                 endMinutes = uiState.comfortableTimeEndMinutes,
+                                validate = viewModel::callTimeError,
                                 onConfirm = { start, end ->
                                     if (start != null) {
                                         requestExactAlarmAccessIfNeeded()
@@ -293,6 +298,17 @@ fun ScheduleSheet(
                                     }
                                     viewModel.onCallTimeChange(start, end)
                                 }
+                            )
+                        }
+                    }
+
+                    uiState.pastTimeWarning?.let { warning ->
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                            Text(
+                                warning,
+                                Modifier.padding(Spacing.md),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
@@ -305,6 +321,10 @@ fun ScheduleSheet(
                             modifier = Modifier.fillMaxWidth().padding(top = Spacing.xs),
                             singleLine = true
                         )
+                    }
+
+                    uiState.timeError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
 
                     Button(
@@ -418,7 +438,12 @@ private enum class TimeField { START, END }
  * input gently inflating to fit a window instead of jumping.
  */
 @Composable
-private fun CallTimePicker(startMinutes: Int?, endMinutes: Int?, onConfirm: (start: Int?, end: Int?) -> Unit) {
+private fun CallTimePicker(
+    startMinutes: Int?,
+    endMinutes: Int?,
+    validate: (start: Int, end: Int?) -> String?,
+    onConfirm: (start: Int?, end: Int?) -> Unit
+) {
     var showPicker by remember { mutableStateOf(false) }
     val displayLabel = when {
         startMinutes == null -> "Not set"
@@ -465,6 +490,7 @@ private fun CallTimePicker(startMinutes: Int?, endMinutes: Int?, onConfirm: (sta
         CallTimePickerDialog(
             initialStart = startMinutes,
             initialEnd = endMinutes,
+            validate = validate,
             onDismiss = { showPicker = false },
             onConfirm = { start, end ->
                 onConfirm(start, end)
@@ -485,6 +511,7 @@ private fun CallTimePicker(startMinutes: Int?, endMinutes: Int?, onConfirm: (sta
 private fun CallTimePickerDialog(
     initialStart: Int?,
     initialEnd: Int?,
+    validate: (start: Int, end: Int?) -> String?,
     onDismiss: () -> Unit,
     onConfirm: (start: Int, end: Int?) -> Unit
 ) {
@@ -554,16 +581,13 @@ private fun CallTimePickerDialog(
                     Button(
                         onClick = {
                             val start = startState.hour * 60 + startState.minute
-                            if (!isWindow) {
-                                onConfirm(start, null)
-                                return@Button
-                            }
-                            val end = endState.hour * 60 + endState.minute
-                            if (end <= start) {
+                            val end = if (isWindow) endState.hour * 60 + endState.minute else null
+                            if (end != null && end <= start) {
                                 error = "End time must be after the start time"
                                 return@Button
                             }
-                            onConfirm(start, end)
+                            error = validate(start, end)
+                            if (error == null) onConfirm(start, end)
                         },
                         modifier = Modifier.weight(1f)
                     ) { Text("OK") }
@@ -571,6 +595,14 @@ private fun CallTimePickerDialog(
             }
         }
     }
+}
+
+/** The calendar hands over each day as UTC midnight, so it's read back in UTC to get that same day. */
+private class TodayOrLaterDates(private val today: LocalDate) : SelectableDates {
+    override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+        !Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate().isBefore(today)
+
+    override fun isSelectableYear(year: Int): Boolean = year >= today.year
 }
 
 @Composable
@@ -589,7 +621,10 @@ private fun DueDatePicker(nextDueDate: Long, onPick: (Long) -> Unit) {
     }
 
     if (showPicker) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = nextDueDate)
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = nextDueDate,
+            selectableDates = remember { TodayOrLaterDates(LocalDate.now()) }
+        )
         DatePickerDialog(
             onDismissRequest = { showPicker = false },
             confirmButton = {
