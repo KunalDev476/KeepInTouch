@@ -19,12 +19,6 @@ enum class ScheduleStatus {
     MISSED
 }
 
-/** Severity for the in-app App Logs screen (Settings -> Diagnostics -> App Logs). */
-enum class LogLevel {
-    DEBUG,
-    INFO,
-    ERROR
-}
 
 /** Direction inferred for a call episode. UNKNOWN when it can't be determined from what was observed. */
 enum class Direction {

@@ -9,6 +9,10 @@ import com.pragmaapps.keepintouch.data.db.dao.ContactDao
 import com.pragmaapps.keepintouch.data.db.entity.ContactEntity
 import com.pragmaapps.keepintouch.data.db.mapper.toDomain
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.ContactLookupFailed
+import com.pragmaapps.keepintouch.data.logging.ContactRenameFailed
+import com.pragmaapps.keepintouch.data.logging.ContactSyncFailed
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
 import com.pragmaapps.keepintouch.domain.model.Contact
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.util.NameNormalizer
@@ -64,6 +68,7 @@ class ContactRepositoryImpl @Inject constructor(
             syncContactsUnsafe()
         } catch (t: Throwable) {
             AppLogger.e(TAG, "syncContacts failed - address book left unchanged", t)
+            CrashReporter.report(ContactSyncFailed(t))
             0
         }
     }
@@ -211,6 +216,7 @@ class ContactRepositoryImpl @Inject constructor(
             }
         } catch (t: Throwable) {
             AppLogger.e(TAG, "resolveCurrentLookupKey failed", t)
+            CrashReporter.report(ContactLookupFailed(t))
             null
         }
     }
@@ -241,6 +247,7 @@ class ContactRepositoryImpl @Inject constructor(
 
             if (editableRawContactIds.isEmpty()) {
                 AppLogger.e(TAG, "renameContact: no editable (non-WhatsApp) raw-contact found for contactId=$contactId")
+                CrashReporter.report(ContactRenameFailed())
                 return@withContext false
             }
 
@@ -280,6 +287,7 @@ class ContactRepositoryImpl @Inject constructor(
             true
         } catch (t: Throwable) {
             AppLogger.e(TAG, "renameContact failed for contactId=$contactId", t)
+            CrashReporter.report(ContactRenameFailed(t))
             false
         }
     }

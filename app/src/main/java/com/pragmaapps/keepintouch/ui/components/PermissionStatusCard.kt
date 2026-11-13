@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,22 +40,37 @@ fun PermissionStatusCard(
     description: String,
     actionLabel: String,
     onAction: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Not granting it isn't a problem, so it's shown neutrally rather than as a warning. */
+    optional: Boolean = false
 ) {
+    val neutral = optional && !granted
     Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(Spacing.lg)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Box(
                     Modifier.size(44.dp).background(
-                        if (granted) MaterialTheme.extendedColors.successGreen.copy(alpha = 0.15f) else MaterialTheme.colorScheme.errorContainer,
+                        when {
+                            granted -> MaterialTheme.extendedColors.successGreen.copy(alpha = 0.15f)
+                            neutral -> MaterialTheme.colorScheme.secondaryContainer
+                            else -> MaterialTheme.colorScheme.errorContainer
+                        },
                         CircleShape
                     ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (granted) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+                        imageVector = when {
+                            granted -> Icons.Filled.CheckCircle
+                            neutral -> Icons.Filled.Info
+                            else -> Icons.Filled.Warning
+                        },
                         contentDescription = null,
-                        tint = if (granted) MaterialTheme.extendedColors.successGreen else MaterialTheme.colorScheme.error
+                        tint = when {
+                            granted -> MaterialTheme.extendedColors.successGreen
+                            neutral -> MaterialTheme.colorScheme.onSecondaryContainer
+                            else -> MaterialTheme.colorScheme.error
+                        }
                     )
                 }
                 Column(Modifier.weight(1f)) {
@@ -67,7 +83,7 @@ fun PermissionStatusCard(
                 }
             }
             Spacer(Modifier.height(Spacing.md))
-            if (granted) {
+            if (granted || neutral) {
                 OutlinedButton(onClick = onAction, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
             } else {
                 Button(onClick = onAction, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }

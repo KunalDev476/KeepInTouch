@@ -76,7 +76,7 @@ object CallNotificationExtras {
         val firstPerson = people?.firstOrNull()
 
         // Dialers may wrap a number in invisible direction marks (see BidiMarks) - stripped here so
-        // the stored name, Call Logs and matching all see the plain text.
+        // the stored name and matching both see the plain text.
         val callerName = (firstPerson?.name?.toString() ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString())
             ?.let { BidiMarks.strip(it).trim() }
             ?.takeIf { it.isNotEmpty() }
@@ -105,7 +105,7 @@ object CallNotificationExtras {
         )
     }
 
-    /** Serializes everything readable from this callback into one JSON object for rawJson/Diagnostics. */
+    /** Serializes everything readable from this callback into one JSON object for rawJson. */
     @Suppress("DEPRECATION") // Bundle.get(String) is the only way to read an arbitrary, unknown-typed extra key generically.
     fun toJson(sbn: StatusBarNotification, parsed: Parsed, localElapsedRealtime: Long): JSONObject {
         val notification = sbn.notification

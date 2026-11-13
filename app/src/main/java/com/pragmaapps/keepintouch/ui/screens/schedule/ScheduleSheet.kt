@@ -156,7 +156,7 @@ fun ScheduleSheet(
 
     // POST_NOTIFICATIONS (Android 13+) IS a normal runtime dialog - unlike the two above. Without
     // this, the reminder alarm still fires exactly on time, but posting the notification silently
-    // fails - the alarm side working correctly makes this easy to miss without checking App Logs.
+    // fails - the alarm side working correctly makes this easy to miss.
     val postNotificationsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> postNotificationsGranted = granted }

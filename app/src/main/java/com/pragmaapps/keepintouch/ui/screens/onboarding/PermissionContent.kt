@@ -9,9 +9,11 @@ import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.pragmaapps.keepintouch.data.permissions.AppPermission
+import com.pragmaapps.keepintouch.data.permissions.OptionalPermission
 
 /** What a permission's screen says, shared by first-time onboarding and the missing-permissions flow. */
 internal data class PermissionContent(
@@ -89,6 +91,28 @@ internal fun AppPermission.content(): PermissionContent = when (this) {
         withoutIt = "Without it, important-call reminders won't be set."
     )
 }
+
+internal fun OptionalPermission.content(): PermissionContent = when (this) {
+    OptionalPermission.CALL_SCREENING -> PermissionContent(
+        icon = Icons.Filled.Call,
+        name = "Call screening",
+        purpose = "Backup way to tell who a phone call was with",
+        title = "Help us detect phone calls",
+        why = "On some phones, cellular calls aren't detected reliably, so schedules don't get " +
+            "completed automatically. If auto-complete isn't working for you, set this app as your " +
+            "call-screening app and detection will start working: Android tells us the phone number " +
+            "when a call starts, and we only use it to match the call to a schedule. We never block, " +
+            "silence or reject calls, and nothing leaves your device.\n\n" +
+            "Android allows only one call-screening app at a time: if another app (such as a spam " +
+            "or caller ID app) currently screens your calls, it will stop doing so.",
+        ctaLabel = "Set as call-screening app",
+        withoutIt = "Optional. Only needed if phone calls aren't being marked completed automatically."
+    )
+}
+
+/** Shown under the optional call-screening page, wherever it appears. */
+internal const val CALL_SCREENING_SETTINGS_NOTE =
+    "This permission is optional - you can skip it. You can turn it on or off anytime from this app's Settings."
 
 /**
  * Where this permission is granted from Android Settings. For a runtime permission that's the

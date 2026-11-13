@@ -7,6 +7,8 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.AvatarHashFailed
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 
@@ -28,6 +30,7 @@ object AvatarHasher {
         } catch (t: Throwable) {
             // Crash-proof: a bad/unavailable icon must never take down notification processing.
             AppLogger.e(TAG, "Failed to hash avatar icon", t)
+            CrashReporter.report(AvatarHashFailed(t))
             null
         }
     }

@@ -1,5 +1,7 @@
 package com.pragmaapps.keepintouch.data.reminder
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.Manifest
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -12,6 +14,9 @@ import androidx.core.content.ContextCompat
 import com.pragmaapps.keepintouch.MainActivity
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.DigestReminderBlocked
+import com.pragmaapps.keepintouch.data.logging.DigestReminderPostFailed
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import com.pragmaapps.keepintouch.domain.util.RecurrenceEngine
 import dagger.hilt.android.AndroidEntryPoint
@@ -45,6 +50,7 @@ class DigestReminderReceiver : BroadcastReceiver() {
                 val now = System.currentTimeMillis()
                 val pending = scheduleRepository.getActiveSnapshot().filter { RecurrenceEngine.isDue(it, now) }
 
+                Breadcrumbs.log(Breadcrumb.DIGEST_FIRED, "pending" to pending.size)
                 if (pending.isEmpty()) {
                     AppLogger.d(TAG, "Digest fired - nothing pending, not posting")
                     return@launch
@@ -54,6 +60,7 @@ class DigestReminderReceiver : BroadcastReceiver() {
                     PackageManager.PERMISSION_GRANTED
                 ) {
                     AppLogger.e(TAG, "Digest fired with ${pending.size} pending but POST_NOTIFICATIONS isn't granted - silently dropped")
+                    CrashReporter.report(DigestReminderBlocked(pending.size))
                     return@launch
                 }
 
@@ -61,6 +68,7 @@ class DigestReminderReceiver : BroadcastReceiver() {
                 AppLogger.i(TAG, "Posted digest: ${pending.size} pending (${pending.count { it.isImportant }} important)")
             } catch (t: Throwable) {
                 AppLogger.e(TAG, "Failed to post digest reminder", t)
+                CrashReporter.report(DigestReminderPostFailed(t))
             } finally {
                 pendingResult.finish()
             }

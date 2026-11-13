@@ -10,6 +10,7 @@ import javax.inject.Singleton
 
 private const val PREFS_NAME = "onboarding_preferences"
 private const val KEY_COMPLETED = "onboarding_completed"
+private const val KEY_CALL_SCREENING_OFFERED = "call_screening_offered"
 
 @Singleton
 class OnboardingPreferences @Inject constructor(@ApplicationContext context: Context) {
@@ -21,5 +22,13 @@ class OnboardingPreferences @Inject constructor(@ApplicationContext context: Con
     fun markCompleted() {
         prefs.edit().putBoolean(KEY_COMPLETED, true).apply()
         _completed.value = true
+    }
+
+    /** Whether the one-time optional call-screening page has been shown (granted or skipped). */
+    val callScreeningOffered: Boolean
+        get() = prefs.getBoolean(KEY_CALL_SCREENING_OFFERED, false)
+
+    fun markCallScreeningOffered() {
+        prefs.edit().putBoolean(KEY_CALL_SCREENING_OFFERED, true).apply()
     }
 }

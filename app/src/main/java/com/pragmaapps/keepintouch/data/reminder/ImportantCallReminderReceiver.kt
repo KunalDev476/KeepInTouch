@@ -1,5 +1,7 @@
 package com.pragmaapps.keepintouch.data.reminder
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.Manifest
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -11,6 +13,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.pragmaapps.keepintouch.MainActivity
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.ImportantReminderBlocked
+import com.pragmaapps.keepintouch.data.logging.ImportantReminderPostFailed
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import com.pragmaapps.keepintouch.domain.util.PriorityEngine
@@ -63,6 +68,7 @@ class ImportantCallReminderReceiver : BroadcastReceiver() {
                     .filter { schedule -> isReminderPending(schedule, now) }
                     .sortedBy { PriorityEngine.dueInstantMillis(it) }
 
+                Breadcrumbs.log(Breadcrumb.REMINDER_FIRED, "pending" to due.size)
                 if (due.isEmpty()) {
                     AppLogger.d(TAG, "Reminder alarm fired but nothing is currently pending a reminder - not posting")
                     return@launch
@@ -72,17 +78,18 @@ class ImportantCallReminderReceiver : BroadcastReceiver() {
                     PackageManager.PERMISSION_GRANTED
                 ) {
                     AppLogger.e(TAG, "Reminder fired with ${due.size} schedule(s) pending but POST_NOTIFICATIONS isn't granted - dropped")
+                    CrashReporter.report(ImportantReminderBlocked(due.size))
                     return@launch
                 }
 
                 postReminder(context, due)
                 AppLogger.i(
                     TAG,
-                    "Posted reminder for ${due.size} schedule(s): ${due.joinToString { it.displayNameSnapshot }}",
-                    crashlyticsMessage = "Posted reminder for ${due.size} schedule(s): ids=${due.joinToString { it.id.toString() }}"
+                    "Posted reminder for ${due.size} schedule(s): ${due.joinToString { it.displayNameSnapshot }}"
                 )
             } catch (t: Throwable) {
                 AppLogger.e(TAG, "Failed to post important-call reminder", t)
+                CrashReporter.report(ImportantReminderPostFailed(t))
             } finally {
                 pendingResult.finish()
             }

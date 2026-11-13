@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.content.Context
 import androidx.core.content.ContextCompat
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.NotificationChannelsFailed
 
 private const val TAG = "ReminderNotifications"
 
@@ -34,6 +36,7 @@ object ReminderNotifications {
             ensureChannelUnsafe(context)
         } catch (t: Throwable) {
             AppLogger.e(TAG, "Failed to create notification channels - reminder notifications may not appear", t)
+            CrashReporter.report(NotificationChannelsFailed(t))
         }
     }
 

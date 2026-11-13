@@ -1,10 +1,14 @@
 package com.pragmaapps.keepintouch.data.postcall
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.ScheduleCompleteFailed
 import com.pragmaapps.keepintouch.domain.model.MatchConfidence
 import com.pragmaapps.keepintouch.domain.repository.CallEventRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
@@ -38,6 +42,7 @@ class PostCallConfirmationReceiver : BroadcastReceiver() {
         val scheduleId = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1)
         NotificationManagerCompat.from(context).cancel(intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1))
 
+        Breadcrumbs.log(Breadcrumb.POST_CALL_PROMPT_ACTION, "mark_complete" to (action == ACTION_MARK_COMPLETE))
         if (action == ACTION_LEAVE_SCHEDULED) {
             AppLogger.i(TAG, "Left schedule id=$scheduleId as scheduled after event id=$callEventId")
             return
@@ -66,6 +71,7 @@ class PostCallConfirmationReceiver : BroadcastReceiver() {
                 }
             } catch (t: Throwable) {
                 AppLogger.e(TAG, "Failed to complete schedule id=$scheduleId from the post-call notification", t)
+                CrashReporter.report(ScheduleCompleteFailed(t))
             } finally {
                 pendingResult.finish()
             }

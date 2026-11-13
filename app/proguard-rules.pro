@@ -14,11 +14,14 @@
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+-keepattributes SourceFile,LineNumberTable
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Crashlytics groups and titles reports by exception class, so those names must stay readable.
+-keep public class * extends java.lang.Exception
 
 # Compile-time-only annotations pulled in transitively (e.g. via Room's androidTest artifact) -
 # never present at runtime, safe to not have on the classpath R8 sees.

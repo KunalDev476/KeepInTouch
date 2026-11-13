@@ -2,6 +2,8 @@
 
 package com.pragmaapps.keepintouch.ui.screens.onboarding
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -102,6 +104,7 @@ fun MissingPermissionsScreen(onDone: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         granted = AppPermissions.granted(context)
         val permission = missing.getOrNull(pagerState.currentPage - 1)
+        Breadcrumbs.log(Breadcrumb.PERMISSION_RESULT, "permission" to permission, "granted" to isGranted)
         val runtimePermission = permission?.runtimePermission
         val activity = context as? Activity
         if (!isGranted && runtimePermission != null && activity != null &&
@@ -160,7 +163,7 @@ fun MissingPermissionsScreen(onDone: () -> Unit) {
  * way lists fade behind the bottom bar. Content is centred in the space above when it all fits.
  */
 @Composable
-private fun FadedScrollPage(footer: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun FadedScrollPage(footer: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     val density = LocalDensity.current
     var footerHeight by remember { mutableStateOf(0.dp) }
 
@@ -258,9 +261,19 @@ private fun PermissionsHero() {
     }
 }
 
-/** The explanation scrolls and fades, while what's at stake and the grant button stay put. */
+/**
+ * The explanation scrolls and fades, while what's at stake and the grant button stay put. An
+ * [optional] permission's stakes are shown in a neutral card rather than the red "required" one.
+ */
 @Composable
-private fun MissingPermissionPage(content: PermissionContent, granted: Boolean, ctaLabel: String, onCta: () -> Unit) {
+internal fun MissingPermissionPage(
+    content: PermissionContent,
+    granted: Boolean,
+    ctaLabel: String,
+    onCta: () -> Unit,
+    optional: Boolean = false,
+    ctaEnabled: Boolean = true
+) {
     FadedScrollPage(
         footer = {
             if (granted) {
@@ -273,9 +286,11 @@ private fun MissingPermissionPage(content: PermissionContent, granted: Boolean, 
                     Text("Granted", color = MaterialTheme.extendedColors.successGreen, style = MaterialTheme.typography.labelLarge)
                 }
             } else {
+                val container = if (optional) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer
+                val onContainer = if (optional) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onErrorContainer
                 Card(
                     Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    colors = CardDefaults.cardColors(containerColor = container)
                 ) {
                     Column(
                         Modifier.fillMaxWidth().padding(Spacing.md),
@@ -283,20 +298,20 @@ private fun MissingPermissionPage(content: PermissionContent, granted: Boolean, 
                         verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                     ) {
                         Text(
-                            "Required for the app to work properly",
+                            if (optional) "Optional" else "Required for the app to work properly",
                             style = MaterialTheme.typography.labelLarge,
                             textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            color = onContainer
                         )
                         Text(
                             content.withoutIt,
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            color = onContainer
                         )
                     }
                 }
-                Button(onClick = onCta, modifier = Modifier.fillMaxWidth().padding(top = Spacing.md)) { Text(ctaLabel) }
+                Button(onClick = onCta, enabled = ctaEnabled, modifier = Modifier.fillMaxWidth().padding(top = Spacing.md)) { Text(ctaLabel) }
             }
         }
     ) {

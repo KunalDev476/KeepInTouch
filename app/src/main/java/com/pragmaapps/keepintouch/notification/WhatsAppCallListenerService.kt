@@ -1,17 +1,25 @@
 package com.pragmaapps.keepintouch.notification
 
+import com.pragmaapps.keepintouch.data.logging.CallSourceKind
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.telecom.TelecomManager
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.DialerLookupFailed
+import com.pragmaapps.keepintouch.data.logging.ListenerLost
+import com.pragmaapps.keepintouch.data.permissions.AppPermission
+import com.pragmaapps.keepintouch.data.permissions.AppPermissions
+import com.pragmaapps.keepintouch.data.permissions.OptionalPermission
 import com.pragmaapps.keepintouch.data.notification.CallEpisodeProcessor
 import com.pragmaapps.keepintouch.data.notification.ContactsChangeObserver
 import com.pragmaapps.keepintouch.data.notification.PhoneCallStateTracker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -19,7 +27,7 @@ import javax.inject.Inject
 
 private const val TAG = "WACallListener"
 
-/** WhatsApp's two known packages. Shared with CallLogsViewModel. */
+/** WhatsApp's two known packages. */
 val WHATSAPP_PACKAGES = setOf("com.whatsapp", "com.whatsapp.w4b")
 
 /**
@@ -53,7 +61,7 @@ fun isCellularDialerPackage(packageName: String): Boolean =
  * (confirmed on a real device: ColorOS's com.android.incallui removes the ringing notification at
  * answer and posts no ongoing-call notification until the call screen is backgrounded). A dialer
  * call's timing therefore also comes from [PhoneCallStateTracker] when READ_PHONE_STATE is granted
- * - its ended sessions are forwarded to [CallEpisodeProcessor.onCallSessionEnded] from here. An
+ * - its ended sessions are forwarded to [CallEpisodeProcessor.onCallSessionEnded] by KeepInTouchApplication. An
  * outgoing call that never posts any notification still can't be named, only timed.
  *
  * The class keeps its original name on purpose: the user's notification access grant is tied to
@@ -67,7 +75,6 @@ class WhatsAppCallListenerService : NotificationListenerService() {
     @Inject lateinit var phoneCallStateTracker: PhoneCallStateTracker
 
     private lateinit var scope: CoroutineScope
-    private var callSessionsJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -79,27 +86,33 @@ class WhatsAppCallListenerService : NotificationListenerService() {
         isConnected = true
         resolvedDialerPackage = resolveDefaultDialerPackage()
         AppLogger.i(TAG, "Notification listener connected; default dialer package=$resolvedDialerPackage")
+        Breadcrumbs.log(Breadcrumb.LISTENER_CONNECTED, "dialer_resolved" to (resolvedDialerPackage != null))
         contactsChangeObserver.register()
         phoneCallStateTracker.register()
-        callSessionsJob?.cancel()
-        callSessionsJob = scope.launch {
-            phoneCallStateTracker.sessions.collect { processor.onCallSessionEnded(it) }
-        }
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         isConnected = false
         AppLogger.i(TAG, "Notification listener disconnected")
+        Breadcrumbs.log(
+            Breadcrumb.LISTENER_DISCONNECTED,
+            "access_granted" to AppPermissions.isGranted(this, AppPermission.NOTIFICATION_ACCESS)
+        )
+        // Access is still on, so Android or the phone's battery manager dropped us: call detection
+        // is off with nothing telling the user. Revoking access disconnects too, but isn't a failure.
+        if (AppPermissions.isGranted(this, AppPermission.NOTIFICATION_ACCESS)) CrashReporter.report(ListenerLost())
         contactsChangeObserver.unregister()
-        phoneCallStateTracker.unregister()
-        callSessionsJob?.cancel()
-        callSessionsJob = null
+        unregisterCallStateUnlessScreening()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (!isCallNotification(sbn)) return
         AppLogger.d(TAG, "Call-shaped notification posted from ${sbn.packageName} (key=${sbn.key})")
+        Breadcrumbs.log(
+            Breadcrumb.CALL_NOTIFICATION_SEEN,
+            "source" to CallSourceKind.of(sbn.packageName, isCellularDialerPackage(sbn.packageName))
+        )
         scope.launch { processor.onPosted(sbn) }
     }
 
@@ -110,7 +123,19 @@ class WhatsAppCallListenerService : NotificationListenerService() {
         // saw a matching onPosted() for. Any other package only gets through if the removed
         // notification itself is call-shaped, so unrelated apps' removals never reach the processor.
         if (sbn.packageName !in WHATSAPP_PACKAGES && !isCellularDialerPackage(sbn.packageName) && !isCallNotification(sbn)) return
+        Breadcrumbs.log(
+            Breadcrumb.CALL_NOTIFICATION_REMOVED,
+            "source" to CallSourceKind.of(sbn.packageName, isCellularDialerPackage(sbn.packageName))
+        )
         scope.launch { processor.onRemoved(sbn) }
+    }
+
+    /**
+     * The call-screening backup times its calls with the call state too, so tracking stays on
+     * while this app holds that role even if the listener goes away.
+     */
+    private fun unregisterCallStateUnlessScreening() {
+        if (!AppPermissions.isGranted(this, OptionalPermission.CALL_SCREENING)) phoneCallStateTracker.unregister()
     }
 
     /**
@@ -123,6 +148,7 @@ class WhatsAppCallListenerService : NotificationListenerService() {
         (getSystemService(TELECOM_SERVICE) as? TelecomManager)?.defaultDialerPackage
     } catch (t: Throwable) {
         AppLogger.e(TAG, "Could not resolve default dialer package", t)
+        CrashReporter.report(DialerLookupFailed(t))
         null
     }
 
@@ -155,17 +181,17 @@ class WhatsAppCallListenerService : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         contactsChangeObserver.unregister()
-        phoneCallStateTracker.unregister()
+        unregisterCallStateUnlessScreening()
         scope.cancel()
     }
 
     companion object {
-        /** Cheap in-process signal for Diagnostics; the authoritative grant-state check is NotificationManagerCompat.getEnabledListenerPackages(). */
+        /** Cheap in-process signal for crash reports; the authoritative grant-state check is NotificationManagerCompat.getEnabledListenerPackages(). */
         @Volatile
         var isConnected: Boolean = false
             private set
 
-        /** The package name resolved as the device's default dialer, for Diagnostics - null until the listener has connected at least once, or if resolution failed. */
+        /** The package name resolved as the device's default dialer - null until the listener has connected at least once, or if resolution failed. */
         @Volatile
         var resolvedDialerPackage: String? = null
             private set

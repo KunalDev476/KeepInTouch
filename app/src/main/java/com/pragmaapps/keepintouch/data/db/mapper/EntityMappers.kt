@@ -3,14 +3,12 @@ package com.pragmaapps.keepintouch.data.db.mapper
 import com.pragmaapps.keepintouch.data.db.entity.CallEventEntity
 import com.pragmaapps.keepintouch.data.db.entity.ContactEntity
 import com.pragmaapps.keepintouch.data.db.entity.DigestReminderTimeEntity
-import com.pragmaapps.keepintouch.data.db.entity.LogEntryEntity
 import com.pragmaapps.keepintouch.data.db.entity.PendingMatchEntity
 import com.pragmaapps.keepintouch.data.db.entity.ScheduleCompletionEntity
 import com.pragmaapps.keepintouch.data.db.entity.ScheduleEntity
 import com.pragmaapps.keepintouch.domain.model.CallEvent
 import com.pragmaapps.keepintouch.domain.model.Contact
 import com.pragmaapps.keepintouch.domain.model.DigestReminderTime
-import com.pragmaapps.keepintouch.domain.model.LogEntry
 import com.pragmaapps.keepintouch.domain.model.PendingMatch
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.model.ScheduleCompletion
@@ -164,14 +162,6 @@ fun PendingMatch.toEntity() = PendingMatchEntity(
 private fun String.toLongList(): List<Long> =
     if (isBlank()) emptyList() else split(",").mapNotNull { it.trim().toLongOrNull() }
 
-fun LogEntryEntity.toDomain() = LogEntry(
-    id = id,
-    timestamp = timestamp,
-    level = level,
-    tag = tag,
-    message = message,
-    throwable = throwable
-)
 
 fun DigestReminderTimeEntity.toDomain() = DigestReminderTime(id = id, hour = hour, minute = minute, label = label, enabled = enabled)
 

@@ -1,5 +1,7 @@
 package com.pragmaapps.keepintouch.data.postcall
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
@@ -10,6 +12,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.pragmaapps.keepintouch.MainActivity
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.PostCallPromptBlocked
+import com.pragmaapps.keepintouch.data.logging.PostCallPromptFailed
 import com.pragmaapps.keepintouch.data.reminder.ReminderNotifications
 import com.pragmaapps.keepintouch.domain.model.CallEvent
 import com.pragmaapps.keepintouch.domain.model.Schedule
@@ -36,12 +41,14 @@ class PostCallConfirmationNotifierImpl @Inject constructor(
             showUnsafe(event, schedule)
         } catch (t: Throwable) {
             AppLogger.e(TAG, "Failed to post post-call confirmation for event id=${event.id}", t)
+            CrashReporter.report(PostCallPromptFailed(t))
         }
     }
 
     private fun showUnsafe(event: CallEvent, schedule: Schedule) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             AppLogger.e(TAG, "POST_NOTIFICATIONS isn't granted - post-call confirmation for event id=${event.id} dropped")
+            CrashReporter.report(PostCallPromptBlocked())
             return
         }
         val notificationId = notificationIdFor(event.id)
@@ -72,10 +79,10 @@ class PostCallConfirmationNotifierImpl @Inject constructor(
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)
+        Breadcrumbs.log(Breadcrumb.POST_CALL_PROMPT_SHOWN, "direction" to event.direction)
         AppLogger.i(
             TAG,
-            "Asked whether the call with \"$name\" should complete its schedule (event id=${event.id})",
-            crashlyticsMessage = "Asked whether event id=${event.id} should complete schedule id=${schedule.id}"
+            "Asked whether the call with \"$name\" should complete its schedule (event id=${event.id})"
         )
     }
 

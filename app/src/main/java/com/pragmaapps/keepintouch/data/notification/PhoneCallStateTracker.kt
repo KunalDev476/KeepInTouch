@@ -1,5 +1,8 @@
 package com.pragmaapps.keepintouch.data.notification
 
+import com.pragmaapps.keepintouch.data.logging.PhoneStateKind
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -8,6 +11,8 @@ import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.PhoneStateTrackingFailed
 import com.pragmaapps.keepintouch.domain.util.CallSession
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -77,6 +82,7 @@ class PhoneCallStateTracker @Inject constructor(
             registerUnsafe()
         } catch (t: Throwable) {
             AppLogger.e(TAG, "Failed to register call-state tracking - dialer call durations fall back to notifications only", t)
+            CrashReporter.report(PhoneStateTrackingFailed("register", t))
             unregister()
         }
     }
@@ -100,6 +106,7 @@ class PhoneCallStateTracker @Inject constructor(
             subscriptionIds.forEach { subId -> registerFor(baseManager.createForSubscriptionId(subId), subId) }
         }
         AppLogger.i(TAG, "Call-state tracking registered for ${registrations.size} subscription(s)")
+        Breadcrumbs.log(Breadcrumb.PHONE_STATE_TRACKING, "registered" to true, "subscriptions" to registrations.size)
     }
 
     private fun registerFor(manager: TelephonyManager, subscriptionId: Int) {
@@ -109,6 +116,7 @@ class PhoneCallStateTracker @Inject constructor(
                     onSubscriptionState(subscriptionId, state)
                 } catch (t: Throwable) {
                     AppLogger.e(TAG, "Failed to handle call state $state", t)
+                    CrashReporter.report(PhoneStateTrackingFailed("handle_state", t))
                 }
             }
         }
@@ -123,8 +131,10 @@ class PhoneCallStateTracker @Inject constructor(
                     manager.unregisterTelephonyCallback(callback)
                 } catch (t: Throwable) {
                     AppLogger.e(TAG, "Failed to unregister call-state callback", t)
+                    CrashReporter.report(PhoneStateTrackingFailed("unregister", t))
                 }
             }
+            if (registrations.isNotEmpty()) Breadcrumbs.log(Breadcrumb.PHONE_STATE_TRACKING, "registered" to false)
             registrations.clear()
             stateBySubscription.clear()
             aggregateState = TelephonyManager.CALL_STATE_IDLE
@@ -146,6 +156,7 @@ class PhoneCallStateTracker @Inject constructor(
 
         val now = System.currentTimeMillis()
         AppLogger.d(TAG, "Call state -> ${labelFor(aggregate)} at $now")
+        Breadcrumbs.log(Breadcrumb.PHONE_STATE_CHANGED, "state" to PhoneStateKind.valueOf(labelFor(aggregate)))
         when (aggregate) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 if (sessionStartedAtMs == null) sessionStartedAtMs = now

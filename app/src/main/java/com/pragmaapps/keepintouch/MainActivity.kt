@@ -1,5 +1,9 @@
 package com.pragmaapps.keepintouch
 
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.Icons
+import com.pragmaapps.keepintouch.data.permissions.DeviceVendor
+import com.pragmaapps.keepintouch.data.permissions.OptionalPermission
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -73,10 +77,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
 import com.pragmaapps.keepintouch.data.notification.ContactsChangeObserver
 import com.pragmaapps.keepintouch.data.notification.PhoneCallStateTracker
 import com.pragmaapps.keepintouch.data.permissions.AppPermissions
 import com.pragmaapps.keepintouch.data.prefs.OnboardingPreferences
+import com.pragmaapps.keepintouch.data.permissions.CallScreeningSource
+import com.pragmaapps.keepintouch.data.logging.AppAnalytics
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
 import com.pragmaapps.keepintouch.domain.usecase.SyncContactsUseCase
 import com.pragmaapps.keepintouch.ui.components.bottomFade
 import com.pragmaapps.keepintouch.ui.navigation.BottomBarFadeHeight
@@ -87,8 +96,7 @@ import com.pragmaapps.keepintouch.ui.navigation.MissingPermissionsGate
 import com.pragmaapps.keepintouch.ui.navigation.Transitions
 import com.pragmaapps.keepintouch.ui.screens.confirm.ConfirmScreen
 import com.pragmaapps.keepintouch.ui.screens.contactdetail.ContactDetailScreen
-import com.pragmaapps.keepintouch.ui.screens.logs.AppLogsScreen
-import com.pragmaapps.keepintouch.ui.screens.logs.CallLogsScreen
+import com.pragmaapps.keepintouch.ui.screens.onboarding.CallScreeningPermissionScreen
 import com.pragmaapps.keepintouch.ui.screens.onboarding.MissingPermissionsScreen
 import com.pragmaapps.keepintouch.ui.screens.onboarding.OnboardingScreen
 import com.pragmaapps.keepintouch.ui.screens.people.PeopleScreen
@@ -105,8 +113,6 @@ import javax.inject.Inject
 
 private const val ROUTE_ONBOARDING = "onboarding"
 private const val ROUTE_CONFIRM = "confirm"
-private const val ROUTE_APP_LOGS = "app_logs"
-private const val ROUTE_CALL_LOGS = "call_logs"
 private const val ROUTE_REMINDERS = "reminders"
 private const val ROUTE_CONTACT_DETAIL = "contact/{lookupKey}"
 private fun contactDetailRoute(lookupKey: String) = "contact/$lookupKey"
@@ -133,18 +139,50 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val onboardingDone = onboardingPreferences.completed.value
-        MissingPermissionsGate.onActivityCreated(isNewLaunch = savedInstanceState == null) {
-            onboardingDone && AppPermissions.missing(this).isNotEmpty()
+        val isNewLaunch = savedInstanceState == null
+        if (isNewLaunch) {
+            Breadcrumbs.log(Breadcrumb.APP_OPENED, "onboarding_done" to onboardingDone)
+        }
+        MissingPermissionsGate.onActivityCreated(isNewLaunch = isNewLaunch) {
+            val missing = AppPermissions.missing(this)
+            val show = onboardingDone && missing.isNotEmpty()
+            if (show) Breadcrumbs.log(Breadcrumb.MISSING_PERMISSIONS_SHOWN, "missing_count" to missing.size)
+            show
+        }
+        // Existing users on phones outside DeviceVendor's verified list get the optional
+        // call-screening page once, after any missing required permissions. New users get it as
+        // onboarding's last page instead.
+        if (isNewLaunch && onboardingDone && !onboardingPreferences.callScreeningOffered &&
+            AppPermissions.shouldOfferCallScreening() &&
+            !AppPermissions.isGranted(this, OptionalPermission.CALL_SCREENING)
+        ) {
+            Breadcrumbs.log(Breadcrumb.CALL_SCREENING_OFFERED, "source" to CallScreeningSource.STARTUP)
+            MissingPermissionsGate.offerCallScreeningOnStartup()
         }
         setContent {
             KeepInTouchTheme {
-                KeepInTouchRoot(startAtOnboarding = !onboardingDone)
+                KeepInTouchRoot(
+                    startAtOnboarding = !onboardingDone,
+                    onCallScreeningClosed = { source, granted ->
+                        AppAnalytics.logCallScreeningOffer(source, granted)
+                        Breadcrumbs.log(Breadcrumb.CALL_SCREENING_RESULT, "source" to source, "granted" to granted)
+                        onboardingPreferences.markCallScreeningOffered()
+                    }
+                )
             }
         }
     }
 
+    // TODO(testing): remove before release. Shows the vendor check every time the app comes to
+    // the foreground, to verify which phones get the optional call-screening page.
+    override fun onStart() {
+        super.onStart()
+        VendorDebugBanner.visible = true
+    }
+
     override fun onResume() {
         super.onResume()
+        CrashReporter.refreshDeviceState()
         contactsChangeObserver.register()
         phoneCallStateTracker.register()
         // Picks up contact renames made while the app was closed and the observer wasn't running
@@ -157,7 +195,10 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
+private fun KeepInTouchRoot(
+    startAtOnboarding: Boolean,
+    onCallScreeningClosed: (source: CallScreeningSource, granted: Boolean) -> Unit
+) {
     val navController = rememberNavController()
     var scheduleSheetArgs by remember { mutableStateOf<ScheduleSheetArgs?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -168,8 +209,8 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    // Reminders is reached from Settings but, unlike the other pushed detail screens (App Logs,
-    // Call Logs, Confirm, Contact Detail), keeps the tab bar visible - it's frequently revisited
+    // Reminders is reached from Settings but, unlike the other pushed detail screens (Confirm,
+    // Contact Detail), keeps the tab bar visible - it's frequently revisited
     // alongside the main tabs rather than a one-off drill-down.
     val showBottomBar = currentRoute in Destination.bottomBarDestinations.map { it.route } || currentRoute == ROUTE_REMINDERS
 
@@ -284,28 +325,8 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
                     popExitTransition = { Transitions.tabExit() }
                 ) {
                     SettingsScreen(
-                        onOpenAppLogs = { navController.navigate(ROUTE_APP_LOGS) },
-                        onOpenCallLogs = { navController.navigate(ROUTE_CALL_LOGS) },
                         onOpenReminders = { navController.navigate(ROUTE_REMINDERS) }
                     )
-                }
-                composable(
-                    ROUTE_APP_LOGS,
-                    enterTransition = { Transitions.pushEnter() },
-                    exitTransition = { Transitions.pushExit() },
-                    popEnterTransition = { Transitions.popEnter() },
-                    popExitTransition = { Transitions.popExit() }
-                ) {
-                    AppLogsScreen(onBack = { navController.popBackStack() })
-                }
-                composable(
-                    ROUTE_CALL_LOGS,
-                    enterTransition = { Transitions.pushEnter() },
-                    exitTransition = { Transitions.pushExit() },
-                    popEnterTransition = { Transitions.popEnter() },
-                    popExitTransition = { Transitions.popExit() }
-                ) {
-                    CallLogsScreen(onBack = { navController.popBackStack() })
                 }
                 composable(
                     ROUTE_REMINDERS,
@@ -383,6 +404,28 @@ private fun KeepInTouchRoot(startAtOnboarding: Boolean) {
                 )
             }
         }
+    }
+
+    // The optional call-screening screen: once at startup on unverified phones, or via
+    // MissingPermissionsGate.showCallScreening()
+    // (from Settings, or from code). Over the app for the same reasons as the screen above.
+    AnimatedVisibility(
+        visible = MissingPermissionsGate.showingCallScreening,
+        exit = fadeOut(tween(260))
+    ) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Box(Modifier.systemBarsPadding()) {
+                CallScreeningPermissionScreen(onDone = { granted ->
+                    onCallScreeningClosed(MissingPermissionsGate.callScreeningSource, granted)
+                    MissingPermissionsGate.dismissCallScreening()
+                })
+            }
+        }
+    }
+
+    // TODO(testing): remove before release - see MainActivity.onStart().
+    if (VendorDebugBanner.visible) {
+        VendorDebugBanner.Card(onClose = { VendorDebugBanner.visible = false })
     }
 }
 
@@ -507,5 +550,42 @@ private fun BottomNavItem(
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = contentColor
         )
+    }
+}
+
+/** TODO(testing): remove before release. Stays until closed with its X button. */
+private object VendorDebugBanner {
+    var visible by mutableStateOf(false)
+
+    @Composable
+    fun Card(onClose: () -> Unit) {
+        Box(Modifier.fillMaxSize().systemBarsPadding().padding(Spacing.md)) {
+            androidx.compose.material3.Card(
+                Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface
+                ),
+                elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth().padding(start = Spacing.lg, top = Spacing.sm, bottom = Spacing.md, end = Spacing.xs)
+                ) {
+                    androidx.compose.material3.Text(
+                        "Maker: ${DeviceVendor.maker}\n" +
+                            "Brand: ${DeviceVendor.brand}\n" +
+                            "Show call screening: ${AppPermissions.shouldOfferCallScreening()}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f).padding(top = Spacing.sm)
+                    )
+                    androidx.compose.material3.IconButton(onClick = onClose) {
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Close"
+                        )
+                    }
+                }
+            }
+        }
     }
 }

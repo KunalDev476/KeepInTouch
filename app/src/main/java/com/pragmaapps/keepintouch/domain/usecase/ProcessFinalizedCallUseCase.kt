@@ -1,5 +1,8 @@
 package com.pragmaapps.keepintouch.domain.usecase
 
+import com.pragmaapps.keepintouch.data.logging.MatchKind
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import com.pragmaapps.keepintouch.data.logging.AppLogger
 import com.pragmaapps.keepintouch.data.notification.CallNotificationExtras
 import com.pragmaapps.keepintouch.data.prefs.DetectionPreferences
@@ -48,8 +51,20 @@ class ProcessFinalizedCallUseCase @Inject constructor(
         // The number never goes to Crashlytics - only whether there was one.
         AppLogger.i(
             TAG,
-            "Match outcome for \"${event.notificationName}\" (number=${callerNumber ?: "none"}): ${outcome::class.simpleName}$how",
-            crashlyticsMessage = "Match outcome for event id=${event.id} (hasNumber=${callerNumber != null}): ${outcome::class.simpleName}$how"
+            "Match outcome for \"${event.notificationName}\" (number=${callerNumber ?: "none"}): ${outcome::class.simpleName}$how"
+        )
+
+        Breadcrumbs.log(
+            Breadcrumb.CALL_MATCH_RESULT,
+            "outcome" to when (outcome) {
+                is MatchOutcome.UniqueSchedule -> MatchKind.UNIQUE_SCHEDULE
+                is MatchOutcome.DuplicateSchedules -> MatchKind.DUPLICATE_SCHEDULES
+                is MatchOutcome.ContactWithoutSchedule -> MatchKind.CONTACT_WITHOUT_SCHEDULE
+                MatchOutcome.NoMatch -> MatchKind.NO_MATCH
+            },
+            "confidence" to (outcome as? MatchOutcome.UniqueSchedule)?.confidence,
+            "had_number" to (callerNumber != null),
+            "qualified" to event.qualified
         )
 
         // Always record the best-effort match attempt, even when not qualified, purely for Diagnostics.
@@ -60,8 +75,7 @@ class ProcessFinalizedCallUseCase @Inject constructor(
         if (!event.qualified) {
             AppLogger.d(
                 TAG,
-                "\"${event.notificationName}\" matched but not qualified - not acting on it",
-                crashlyticsMessage = "Event id=${event.id} matched but not qualified - not acting on it"
+                "\"${event.notificationName}\" matched but not qualified - not acting on it"
             )
             handleUnconfirmedOutgoing(event, outcome)
             return // never act on a non-qualifying call - except an unconfirmed outgoing one, above

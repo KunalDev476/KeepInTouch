@@ -1,10 +1,14 @@
 package com.pragmaapps.keepintouch.data.reminder
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.ExactAlarmRearmFailed
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +34,10 @@ class ExactAlarmPermissionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED) return
 
+        Breadcrumbs.log(
+            Breadcrumb.EXACT_ALARM_PERMISSION_CHANGED,
+            "granted" to (context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() ?: false)
+        )
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
@@ -39,6 +47,7 @@ class ExactAlarmPermissionReceiver : BroadcastReceiver() {
                 AppLogger.i(TAG, "Re-armed ${eligible.size} important-call reminder(s) after exact alarms were allowed")
             } catch (t: Throwable) {
                 AppLogger.e(TAG, "Failed to re-arm reminders after exact alarms were allowed", t)
+                CrashReporter.report(ExactAlarmRearmFailed(t))
             } finally {
                 pendingResult.finish()
             }

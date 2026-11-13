@@ -135,4 +135,11 @@ object Migrations {
             db.execSQL("ALTER TABLE `schedules` ADD COLUMN `comfortableTimeEndMinutes` INTEGER")
         }
     }
+
+    /** The App Logs screen this table backed is gone, and its rows could include contact names. */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS `log_entries`")
+        }
+    }
 }

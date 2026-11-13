@@ -1,9 +1,17 @@
 package com.pragmaapps.keepintouch.data.notification
 
+import com.pragmaapps.keepintouch.data.logging.EndReason
+import com.pragmaapps.keepintouch.data.logging.CallSourceKind
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.content.Context
 import android.os.SystemClock
 import android.service.notification.StatusBarNotification
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CallNotificationPostedFailed
+import com.pragmaapps.keepintouch.data.logging.CallNotificationRemovedFailed
+import com.pragmaapps.keepintouch.data.logging.CallSessionEndFailed
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
 import com.pragmaapps.keepintouch.data.prefs.DetectionPreferences
 import com.pragmaapps.keepintouch.domain.model.CallEvent
 import com.pragmaapps.keepintouch.domain.model.Direction
@@ -28,6 +36,9 @@ private const val TAG = "CallEpisodeProcessor"
 /** Synthetic "packageName" tag for a call only the call state saw - no dialer notification ever named it. */
 const val PHONE_STATE_SOURCE = "android.phonestate"
 
+/** Synthetic "packageName" tag for a call named only by the call-screening backup (see CallScreeningBackupService). */
+const val CALL_SCREENING_SOURCE = "android.callscreening"
+
 private const val AWAITING_IDLE_MARKER = "REMOVED_AWAITING_IDLE"
 private const val STATUS_CLEARED_MARKER = "STATUS_CLEARED_ANSWER"
 
@@ -49,7 +60,9 @@ class CallEpisodeProcessor @Inject constructor(
     private val callEventRepository: CallEventRepository,
     private val processFinalizedCall: ProcessFinalizedCallUseCase,
     private val detectionPreferences: DetectionPreferences,
-    private val phoneCallStateTracker: PhoneCallStateTracker
+    private val phoneCallStateTracker: PhoneCallStateTracker,
+    private val screenedCallStore: ScreenedCallStore,
+    private val contactNameLookup: ContactNameLookup
 ) {
     private val mutex = Mutex()
 
@@ -58,6 +71,7 @@ class CallEpisodeProcessor @Inject constructor(
             mutex.withLock { handlePosted(sbn) }
         } catch (t: Throwable) {
             AppLogger.e(TAG, "onPosted failed for key=${sbn.key}; episode processing continues for others", t)
+            CrashReporter.report(CallNotificationPostedFailed(t))
         }
     }
 
@@ -66,6 +80,7 @@ class CallEpisodeProcessor @Inject constructor(
             mutex.withLock { handleRemoved(sbn) }
         } catch (t: Throwable) {
             AppLogger.e(TAG, "onRemoved failed for key=${sbn.key}", t)
+            CrashReporter.report(CallNotificationRemovedFailed(t))
         }
     }
 
@@ -75,6 +90,7 @@ class CallEpisodeProcessor @Inject constructor(
             mutex.withLock { handleSessionEnded(session) }
         } catch (t: Throwable) {
             AppLogger.e(TAG, "onCallSessionEnded failed", t)
+            CrashReporter.report(CallSessionEndFailed(t))
         }
     }
 
@@ -121,9 +137,7 @@ class CallEpisodeProcessor @Inject constructor(
             AppLogger.d(
                 TAG,
                 "notifKey=${sbn.key} reused for a different caller (\"${existing.notificationName}\" -> " +
-                    "\"${parsed.callerName}\") - finalizing the stale episode instead of merging into it",
-                crashlyticsMessage = "notifKey=${sbn.key} reused for a different caller (existing.id=${existing.id}) - " +
-                    "finalizing the stale episode instead of merging into it"
+                    "\"${parsed.callerName}\") - finalizing the stale episode instead of merging into it"
             )
             finalizeEpisode(existing, System.currentTimeMillis(), elapsedNow, reason = "STALE_KEY_REUSE")
             existing = null
@@ -316,10 +330,18 @@ class CallEpisodeProcessor @Inject constructor(
 
     /**
      * A call the call state saw end with no dialer notification ever posted for it - typically an
-     * outgoing call that stayed on the full-screen call screen until hang-up. There's no name to
-     * match, so it's recorded for Call Logs diagnostics only: never qualified, never matched.
+     * outgoing call that stayed on the full-screen call screen until hang-up. If the call-screening
+     * backup saw the call start, its number names the call, and it's finalized like any other
+     * call (qualified by the same duration rule, matched by number). Otherwise there's no name to
+     * match, so it's recorded but never qualified, never matched.
      */
     private suspend fun recordUnnamedCall(session: CallSession) {
+        if (CellularCallTiming.offhookDurationMs(session) == null) return // rang and stopped - nothing worth recording
+        val screened = screenedCallStore.findBetween(session.startedAtMs, session.idleAtMs)
+        if (screened != null) {
+            recordScreenedCall(session, screened)
+            return
+        }
         val offhookDuration = CellularCallTiming.offhookDurationMs(session) ?: return // rang and stopped - nothing worth recording
         val event = CallEvent(
             id = 0,
@@ -343,7 +365,88 @@ class CallEpisodeProcessor @Inject constructor(
             rawJson = CallNotificationExtras.mergeJsonArray(null, sessionJson(session))
         )
         callEventRepository.upsert(event)
+        Breadcrumbs.log(
+            Breadcrumb.CALL_EPISODE_ENDED,
+            "source" to CallSourceKind.PHONE_STATE,
+            "reason" to EndReason.OTHER,
+            "duration_s" to offhookDuration / 1000,
+            "qualified" to false,
+            "named" to false
+        )
         AppLogger.i(TAG, "Call seen only via call state (no notification): offhook duration=${offhookDuration}ms - recorded for diagnostics only")
+    }
+
+    /** A notification-less call named by the call-screening backup and timed by the call state. */
+    private suspend fun recordScreenedCall(session: CallSession, screened: ScreenedCall) {
+        val timing = CellularCallTiming.compute(session)
+        val direction = when {
+            screened.direction != Direction.UNKNOWN -> screened.direction
+            session.beganRinging -> Direction.INCOMING
+            else -> Direction.OUTGOING
+        }
+        val draft = CallEvent(
+            id = 0,
+            packageName = CALL_SCREENING_SOURCE,
+            notifKey = "callscreening:${session.startedAtMs}",
+            statesSeen = "SCREENED_${screened.direction}@${screened.atMs}",
+            connected = timing.connected,
+            isVideo = false,
+            isGroupCall = false,
+            direction = direction,
+            notificationName = contactNameLookup.displayNameFor(screened.number) ?: screened.number,
+            postTime = session.startedAtMs,
+            ongoingWhen = timing.startMs,
+            ongoingPostedElapsedRealtime = null,
+            endTime = null,
+            inferredDurationMs = null,
+            qualified = false,
+            avatarHash = null,
+            matchedScheduleId = null,
+            matchConfidence = null,
+            rawJson = CallNotificationExtras.mergeJsonArray(
+                CallNotificationExtras.mergeJsonArray(null, screenedJson(screened)),
+                sessionJson(session)
+            )
+        )
+        val id = callEventRepository.upsert(draft)
+        AppLogger.i(TAG, "Call seen via call state with no notification - named by call screening")
+        finalize(
+            existing = draft.copy(id = id),
+            endTime = timing.endMs,
+            inferredDuration = timing.durationMs,
+            stateTrace = "${phoneStateTrace(session)};CALL_SCREENING_FALLBACK",
+            reason = "CALL_SCREENING_FALLBACK"
+        )
+    }
+
+    /**
+     * Fills in what a dialer episode's notifications left out - the caller's number, and the
+     * direction if it's still unknown - from a call the screening backup saw start around the same
+     * time. Never replaces anything the notification did provide; anything that isn't a dialer
+     * call (WhatsApp etc.) is never screened, so it's left alone.
+     */
+    private fun withScreenedDetails(event: CallEvent, endTime: Long): CallEvent {
+        if (!isCellularDialerPackage(event.packageName)) return event
+        if (CallNotificationExtras.lastCallerNumber(event.rawJson) != null && event.direction != Direction.UNKNOWN) return event
+        val screened = screenedCallStore.findBetween(event.postTime, endTime) ?: return event
+        var enriched = event
+        if (CallNotificationExtras.lastCallerNumber(event.rawJson) == null) {
+            enriched = enriched.copy(
+                rawJson = CallNotificationExtras.mergeJsonArray(enriched.rawJson, screenedJson(screened)),
+                statesSeen = "${enriched.statesSeen};SCREENED_NUMBER_ADDED"
+            )
+        }
+        if (enriched.direction == Direction.UNKNOWN && screened.direction != Direction.UNKNOWN) {
+            enriched = enriched.copy(direction = screened.direction)
+        }
+        return enriched
+    }
+
+    private fun screenedJson(screened: ScreenedCall): JSONObject = JSONObject().apply {
+        put("source", CALL_SCREENING_SOURCE)
+        put("callerNumber", screened.number)
+        put("screenedDirection", screened.direction.name)
+        put("screenedAt", screened.atMs)
     }
 
     private fun phoneStateTrace(session: CallSession): String =
@@ -369,29 +472,38 @@ class CallEpisodeProcessor @Inject constructor(
     }
 
     private suspend fun finalize(existing: CallEvent, endTime: Long, inferredDuration: Long?, stateTrace: String, reason: String) {
+        val enriched = withScreenedDetails(existing, endTime)
         val qualified = QualifyingCallRule.isQualified(
             QualifyingCallRule.Signals(
-                connected = existing.connected,
-                direction = existing.direction,
-                isGroupCall = existing.isGroupCall,
-                isVideo = existing.isVideo,
+                connected = enriched.connected,
+                direction = enriched.direction,
+                isGroupCall = enriched.isGroupCall,
+                isVideo = enriched.isVideo,
                 inferredDurationMs = inferredDuration
             ),
             detectionPreferences.settings.value
         )
 
-        val finalized = existing.copy(
-            statesSeen = "${existing.statesSeen};$stateTrace",
+        val finalized = enriched.copy(
+            statesSeen = "${enriched.statesSeen};$stateTrace",
             endTime = endTime,
             inferredDurationMs = inferredDuration,
             qualified = qualified
         )
         callEventRepository.update(finalized)
+        Breadcrumbs.log(
+            Breadcrumb.CALL_EPISODE_ENDED,
+            "source" to CallSourceKind.of(finalized.packageName, isCellularDialerPackage(finalized.packageName)),
+            "reason" to EndReason.of(reason),
+            "direction" to finalized.direction,
+            "connected" to finalized.connected,
+            "duration_s" to inferredDuration?.div(1000),
+            "qualified" to qualified,
+            "named" to (finalized.notificationName != DialerCallSignals.UNKNOWN_NAME)
+        )
         AppLogger.i(
             TAG,
             "Call finalized ($reason): \"${finalized.notificationName}\" from ${finalized.packageName}, " +
-                "direction=${finalized.direction}, durationMs=$inferredDuration, qualified=$qualified",
-            crashlyticsMessage = "Call finalized ($reason): id=${finalized.id} from ${finalized.packageName}, " +
                 "direction=${finalized.direction}, durationMs=$inferredDuration, qualified=$qualified"
         )
         processFinalizedCall(finalized)

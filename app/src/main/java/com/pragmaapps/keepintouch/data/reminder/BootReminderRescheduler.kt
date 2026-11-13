@@ -1,9 +1,13 @@
 package com.pragmaapps.keepintouch.data.reminder
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.BootRearmFailed
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
 import com.pragmaapps.keepintouch.domain.repository.DigestReminderRepository
 import com.pragmaapps.keepintouch.domain.repository.ScheduleRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -41,8 +45,14 @@ class BootReminderRescheduler : BroadcastReceiver() {
                 val digestSlots = digestReminderRepository.getAllSnapshot()
                 digestReminderScheduler.rescheduleAll(digestSlots)
                 AppLogger.i(TAG, "Re-armed ${digestSlots.count { it.enabled }} digest reminder slot(s) after boot")
+                Breadcrumbs.log(
+                    Breadcrumb.BOOT_RESCHEDULE,
+                    "important_reminders" to eligible.size,
+                    "digest_slots" to digestSlots.count { it.enabled }
+                )
             } catch (t: Throwable) {
                 AppLogger.e(TAG, "Failed to re-arm reminders after boot", t)
+                CrashReporter.report(BootRearmFailed(t))
             } finally {
                 pendingResult.finish()
             }

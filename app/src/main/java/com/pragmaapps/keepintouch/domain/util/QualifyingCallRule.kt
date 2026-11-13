@@ -37,24 +37,6 @@ object QualifyingCallRule {
             signals.inferredDurationMs != null &&
             signals.inferredDurationMs >= settings.minDurationMs
 
-    /** Human-readable reasons a non-qualifying call didn't qualify, for the Diagnostics screen. */
-    fun disqualifyReasons(signals: Signals, settings: DetectionSettings = DetectionSettings()): List<String> {
-        val reasons = mutableListOf<String>()
-        if (!signals.connected) reasons += "Never reached ONGOING (not answered/connected)."
-        if (signals.direction == Direction.UNKNOWN) reasons += "Direction could not be determined."
-        if (signals.direction == Direction.INCOMING && !settings.countIncoming) reasons += "Incoming calls are excluded in Settings."
-        if (signals.direction == Direction.OUTGOING && !settings.countOutgoing) reasons += "Outgoing calls are excluded in Settings."
-        if (signals.isGroupCall) reasons += "Flagged as a group call - cannot fulfill a 1:1 schedule."
-        if (signals.isVideo) reasons += "Video calls are excluded - only voice calls fulfill a schedule."
-        when (val duration = signals.inferredDurationMs) {
-            null -> reasons += "No duration basis available (never observed an ONGOING timestamp)."
-            else -> if (duration < settings.minDurationMs) {
-                reasons += "Inferred duration ${duration}ms is below the ${settings.minDurationMs}ms threshold."
-            }
-        }
-        return reasons
-    }
-
     private fun directionAllowed(direction: Direction, settings: DetectionSettings): Boolean = when (direction) {
         Direction.INCOMING -> settings.countIncoming
         Direction.OUTGOING -> settings.countOutgoing

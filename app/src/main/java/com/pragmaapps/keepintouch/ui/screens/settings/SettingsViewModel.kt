@@ -7,6 +7,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.pragmaapps.keepintouch.data.permissions.AppPermissions
+import com.pragmaapps.keepintouch.data.permissions.OptionalPermission
 import com.pragmaapps.keepintouch.data.prefs.DetectionPreferences
 import com.pragmaapps.keepintouch.domain.repository.ContactRepository
 import com.pragmaapps.keepintouch.domain.repository.DataManagementRepository
@@ -28,13 +30,15 @@ data class SettingsUiState(
     val whatsappContactCount: Int = 0,
     val notificationListenerGranted: Boolean = false,
     val phoneStatePermissionGranted: Boolean = false,
+    val callScreeningGranted: Boolean = false,
     val detectionSettings: DetectionSettings = DetectionSettings()
 )
 
 private data class PermissionSnapshot(
     val contactsGranted: Boolean,
     val notificationListenerGranted: Boolean,
-    val phoneStateGranted: Boolean
+    val phoneStateGranted: Boolean,
+    val callScreeningGranted: Boolean
 )
 
 @HiltViewModel
@@ -56,6 +60,7 @@ class SettingsViewModel @Inject constructor(
             contactsPermissionGranted = permissions.contactsGranted,
             notificationListenerGranted = permissions.notificationListenerGranted,
             phoneStatePermissionGranted = permissions.phoneStateGranted,
+            callScreeningGranted = permissions.callScreeningGranted,
             detectionSettings = detection
         )
     }
@@ -69,7 +74,8 @@ class SettingsViewModel @Inject constructor(
         val contacts = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         val listener = NotificationManagerCompat.getEnabledListenerPackages(app).contains(app.packageName)
         val phoneState = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
-        return PermissionSnapshot(contacts, listener, phoneState)
+        val callScreening = AppPermissions.isGranted(app, OptionalPermission.CALL_SCREENING)
+        return PermissionSnapshot(contacts, listener, phoneState, callScreening)
     }
 
     fun refreshPermissionState() {

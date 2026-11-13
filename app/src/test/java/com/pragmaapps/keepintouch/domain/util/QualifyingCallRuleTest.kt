@@ -81,20 +81,4 @@ class QualifyingCallRuleTest {
         assertFalse(QualifyingCallRule.isQualified(signals(isVideo = true)))
         assertTrue(QualifyingCallRule.isQualified(signals(isVideo = false)))
     }
-
-    @Test
-    fun `disqualifyReasons explains every failing criterion`() {
-        val reasons = QualifyingCallRule.disqualifyReasons(
-            signals(connected = false, direction = Direction.UNKNOWN, isGroupCall = true, inferredDurationMs = null)
-        )
-        assertTrue(reasons.any { it.contains("ONGOING") })
-        assertTrue(reasons.any { it.contains("Direction") })
-        assertTrue(reasons.any { it.contains("group call") })
-        assertTrue(reasons.any { it.contains("duration basis") })
-    }
-
-    @Test
-    fun `disqualifyReasons is empty for a qualifying call`() {
-        assertTrue(QualifyingCallRule.disqualifyReasons(signals()).isEmpty())
-    }
 }

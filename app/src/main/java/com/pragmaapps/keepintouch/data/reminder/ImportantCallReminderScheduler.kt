@@ -1,10 +1,17 @@
 package com.pragmaapps.keepintouch.data.reminder
 
+import com.pragmaapps.keepintouch.data.logging.ReminderSkip
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.ExactAlarmNotAllowed
+import com.pragmaapps.keepintouch.data.logging.ReminderArmFailed
+import com.pragmaapps.keepintouch.data.logging.ReminderCancelFailed
 import com.pragmaapps.keepintouch.domain.model.Schedule
 import com.pragmaapps.keepintouch.domain.util.DateMath
 import com.pragmaapps.keepintouch.domain.util.PriorityEngine
@@ -36,6 +43,7 @@ class ImportantCallReminderScheduler @Inject constructor(
         if (schedule.active && schedule.isImportant && schedule.preferredTimeMinutes != null) {
             arm(schedule)
         } else {
+            Breadcrumbs.log(Breadcrumb.REMINDER_SCHEDULED, "armed" to false, "skip" to ReminderSkip.NOT_ELIGIBLE)
             AppLogger.d(
                 TAG,
                 "Not arming reminder for scheduleId=${schedule.id}: active=${schedule.active}, " +
@@ -50,7 +58,8 @@ class ImportantCallReminderScheduler @Inject constructor(
         } catch (t: Throwable) {
             // Genuinely unexpected - AlarmManager.cancel() on a non-existent PendingIntent is
             // normally a silent no-op, not a throw - worth Crashlytics visibility if it happens.
-            AppLogger.nonFatal(TAG, "Could not cancel reminder for scheduleId=$scheduleId", t)
+            AppLogger.e(TAG, "Could not cancel reminder for scheduleId=$scheduleId", t)
+            CrashReporter.report(ReminderCancelFailed(t))
         }
     }
 
@@ -58,24 +67,26 @@ class ImportantCallReminderScheduler @Inject constructor(
         val dueInstant = PriorityEngine.dueInstantMillis(schedule)
         val fireAt = dueInstant - REMINDER_LEAD_MS
         if (fireAt <= System.currentTimeMillis()) {
+            Breadcrumbs.log(Breadcrumb.REMINDER_SCHEDULED, "armed" to false, "skip" to ReminderSkip.IN_PAST)
             AppLogger.i(
                 TAG,
                 "Reminder for scheduleId=${schedule.id} (${schedule.displayNameSnapshot}) would fire in the past " +
                     "(due ${DateMath.formatDate(dueInstant)}, computed fireAt=$fireAt <= now=${System.currentTimeMillis()}) - not armed. " +
-                    "Likely cause: due date/time is today but already less than 10 minutes away, or in the past.",
-                crashlyticsMessage = "Reminder for scheduleId=${schedule.id} would fire in the past " +
-                    "(due ${DateMath.formatDate(dueInstant)}, computed fireAt=$fireAt <= now=${System.currentTimeMillis()}) - not armed."
+                    "Likely cause: due date/time is today but already less than 10 minutes away, or in the past."
             )
             return
         }
 
         val manager = alarmManager()
         if (!manager.canScheduleExactAlarms()) {
+            Breadcrumbs.log(Breadcrumb.REMINDER_SCHEDULED, "armed" to false, "skip" to ReminderSkip.NO_EXACT_ALARM)
             AppLogger.e(
                 TAG,
                 "SCHEDULE_EXACT_ALARM not granted; reminder for scheduleId=${schedule.id} (${schedule.displayNameSnapshot}) not armed. " +
-                    "Grant it via Settings > Apps > this app > Alarms & reminders.",
-                crashlyticsMessage = "SCHEDULE_EXACT_ALARM not granted; reminder for scheduleId=${schedule.id} not armed."
+                    "Grant it via Settings > Apps > this app > Alarms & reminders."
+            )
+            CrashReporter.report(
+                ExactAlarmNotAllowed(schedule.recurrence, schedule.comfortableTimeEndMinutes != null, minutesUntil(dueInstant))
             )
             return
         }
@@ -97,19 +108,28 @@ class ImportantCallReminderScheduler @Inject constructor(
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
             )
+            Breadcrumbs.log(
+                Breadcrumb.REMINDER_SCHEDULED,
+                "armed" to true,
+                "recurrence" to schedule.recurrence,
+                "minutes_until_fire" to minutesUntil(fireAt)
+            )
             AppLogger.i(
                 TAG,
                 "Armed reminder for scheduleId=${schedule.id} (${schedule.displayNameSnapshot}): fires at $fireAt, " +
-                    "10 minutes before due ${DateMath.formatDate(dueInstant)}",
-                crashlyticsMessage = "Armed reminder for scheduleId=${schedule.id}: fires at $fireAt, " +
                     "10 minutes before due ${DateMath.formatDate(dueInstant)}"
             )
         } catch (t: SecurityException) {
             // canScheduleExactAlarms() said yes above, yet the call still threw - a genuinely
-            // surprising, broken state worth Crashlytics visibility, not an expected permission gap.
-            AppLogger.nonFatal(TAG, "Could not schedule exact alarm for scheduleId=${schedule.id}", t)
+            // surprising, broken state rather than an expected permission gap.
+            AppLogger.e(TAG, "Could not schedule exact alarm for scheduleId=${schedule.id}", t)
+            CrashReporter.report(
+                ReminderArmFailed(schedule.recurrence, schedule.comfortableTimeEndMinutes != null, minutesUntil(dueInstant), t)
+            )
         }
     }
+
+    private fun minutesUntil(instant: Long): Long = (instant - System.currentTimeMillis()) / 60_000
 
     private fun pendingIntentFor(scheduleId: Long): PendingIntent =
         PendingIntent.getBroadcast(

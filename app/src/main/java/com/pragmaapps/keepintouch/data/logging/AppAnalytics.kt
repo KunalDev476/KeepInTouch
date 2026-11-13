@@ -3,6 +3,7 @@ package com.pragmaapps.keepintouch.data.logging
 import android.content.Context
 import android.os.Bundle
 import com.google.firebase.analytics.FirebaseAnalytics
+import com.pragmaapps.keepintouch.data.permissions.CallScreeningSource
 
 /**
  * Global analytics facade, callable from anywhere - same shape as [AppLogger] (safe before
@@ -44,6 +45,14 @@ object AppAnalytics {
 
     fun logOnboardingCompleted() {
         log("onboarding_completed")
+    }
+
+    /** The optional call-screening page was shown and closed - [granted] or skipped. */
+    fun logCallScreeningOffer(source: CallScreeningSource, granted: Boolean) {
+        log("call_screening_offer") {
+            putString("source", source.name.lowercase())
+            putBoolean("granted", granted)
+        }
     }
 
     /** [name] must be a valid Firebase Analytics event name: <=40 chars, alphanumeric/underscore, not a reserved prefix. */

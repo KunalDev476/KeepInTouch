@@ -6,14 +6,12 @@ import androidx.room.TypeConverters
 import com.pragmaapps.keepintouch.data.db.dao.CallEventDao
 import com.pragmaapps.keepintouch.data.db.dao.ContactDao
 import com.pragmaapps.keepintouch.data.db.dao.DigestReminderTimeDao
-import com.pragmaapps.keepintouch.data.db.dao.LogEntryDao
 import com.pragmaapps.keepintouch.data.db.dao.PendingMatchDao
 import com.pragmaapps.keepintouch.data.db.dao.ScheduleCompletionDao
 import com.pragmaapps.keepintouch.data.db.dao.ScheduleDao
 import com.pragmaapps.keepintouch.data.db.entity.CallEventEntity
 import com.pragmaapps.keepintouch.data.db.entity.ContactEntity
 import com.pragmaapps.keepintouch.data.db.entity.DigestReminderTimeEntity
-import com.pragmaapps.keepintouch.data.db.entity.LogEntryEntity
 import com.pragmaapps.keepintouch.data.db.entity.PendingMatchEntity
 import com.pragmaapps.keepintouch.data.db.entity.ScheduleCompletionEntity
 import com.pragmaapps.keepintouch.data.db.entity.ScheduleEntity
@@ -45,6 +43,9 @@ import com.pragmaapps.keepintouch.data.db.entity.ScheduleEntity
  * v6 -> v7: adds schedules.comfortableTimeEndMinutes - an optional window end alongside
  * preferredTimeMinutes, turning a single "Important" call time into an availability window. See
  * [com.pragmaapps.keepintouch.data.db.Migrations.MIGRATION_6_7].
+ *
+ * v7 -> v8: drops log_entries - the in-app App Logs screen is gone, errors go to Crashlytics. See
+ * [com.pragmaapps.keepintouch.data.db.Migrations.MIGRATION_7_8].
  */
 @Database(
     entities = [
@@ -53,10 +54,9 @@ import com.pragmaapps.keepintouch.data.db.entity.ScheduleEntity
         ScheduleCompletionEntity::class,
         CallEventEntity::class,
         PendingMatchEntity::class,
-        LogEntryEntity::class,
         DigestReminderTimeEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -66,7 +66,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun scheduleCompletionDao(): ScheduleCompletionDao
     abstract fun callEventDao(): CallEventDao
     abstract fun pendingMatchDao(): PendingMatchDao
-    abstract fun logEntryDao(): LogEntryDao
     abstract fun digestReminderTimeDao(): DigestReminderTimeDao
 
     companion object {

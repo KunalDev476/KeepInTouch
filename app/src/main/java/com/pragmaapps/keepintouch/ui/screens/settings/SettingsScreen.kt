@@ -53,6 +53,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.pragmaapps.keepintouch.ui.components.PermissionStatusCard
+import com.pragmaapps.keepintouch.ui.navigation.MissingPermissionsGate
 import com.pragmaapps.keepintouch.ui.navigation.ForegroundResetGate
 import com.pragmaapps.keepintouch.ui.navigation.LocalBottomBarInset
 import com.pragmaapps.keepintouch.ui.theme.Spacing
@@ -60,8 +61,6 @@ import com.pragmaapps.keepintouch.ui.theme.extendedColors
 
 @Composable
 fun SettingsScreen(
-    onOpenAppLogs: () -> Unit = {},
-    onOpenCallLogs: () -> Unit = {},
     onOpenReminders: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -145,7 +144,25 @@ fun SettingsScreen(
                         ForegroundResetGate.suppressNext()
                         phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
                     },
-                    modifier = Modifier.padding(bottom = Spacing.lg)
+                    modifier = Modifier.padding(bottom = Spacing.sm)
+                )
+            }
+            item {
+                PermissionStatusCard(
+                    title = "Call screening (optional backup)",
+                    granted = uiState.callScreeningGranted,
+                    description = if (uiState.callScreeningGranted) {
+                        "On - Android tells this app a phone call's number when it starts, so calls can be matched " +
+                            "even when the call notification doesn't name the caller. Turn off from Settings > Apps > " +
+                            "Default apps > Caller ID & spam app."
+                    } else {
+                        "Optional. Only needed if phone calls aren't being marked completed automatically. Replaces " +
+                            "any other app that currently screens your calls."
+                    },
+                    actionLabel = if (uiState.callScreeningGranted) "Details" else "Set up",
+                    onAction = { MissingPermissionsGate.showCallScreening() },
+                    modifier = Modifier.padding(bottom = Spacing.lg),
+                    optional = true
                 )
             }
 
@@ -171,43 +188,6 @@ fun SettingsScreen(
                             )
                         }
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-                    }
-                }
-            }
-
-            item { SectionHeader("Diagnostics") }
-            item {
-                Card(
-                    Modifier.fillMaxWidth().padding(bottom = Spacing.sm).clickable(onClick = onOpenAppLogs)
-                ) {
-                    Row(
-                        Modifier.padding(Spacing.md).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("App Logs", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "See exactly what the app has been doing - call detection, matching, reminders",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-                    }
-                }
-            }
-            item {
-                Card(
-                    Modifier.fillMaxWidth().padding(bottom = Spacing.sm).clickable(onClick = onOpenCallLogs)
-                ) {
-                    Column(Modifier.padding(Spacing.md)) {
-                        Text("Call Logs", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Every detected call notification, qualified or not, with the exact reason why",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }

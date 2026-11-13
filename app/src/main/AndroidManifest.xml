@@ -35,16 +35,17 @@
          app's own code makes a network call or reads the call log - both WhatsApp and regular
          cellular calls are detected from their call notifications (see
          WhatsAppCallListenerService), which needs notification access rather than any declared
-         permission.
+         permission. The optional call-screening backup (CallScreeningBackupService) is a role the
+         user grants, not a declared permission either.
 
          NOTE: INTERNET, ACCESS_NETWORK_STATE, WAKE_LOCK, and the AD_ID/AdServices permissions
          are still present in the *merged* manifest - Firebase Analytics/Crashlytics
          (play-services-measurement) declare them in their own library manifests, and the
          manifest merger adds them regardless of what's declared here. Advertising ID collection
          is explicitly disabled below (google_analytics_adid_collection_enabled) since this app
-         has no ads/attribution use case; see AppAnalytics/AppLogger for what data actually
-         reaches Firebase (categorical event names/params and non-identifying log breadcrumbs
-         only - never contact names or phone numbers). -->
+         has no ads/attribution use case; see AppAnalytics/CrashReporter for what data actually
+         reaches Firebase (categorical event names/params and error reports only - never contact
+         names or phone numbers). -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
 
     <application
@@ -82,6 +83,20 @@
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Optional backup caller identification. Only bound by the system once the user makes
+             this app their call-screening app (RoleManager.ROLE_CALL_SCREENING, requested from
+             Settings, never at onboarding). BIND_SCREENING_SERVICE is not requested by this app -
+             it only lets the system bind the service. It always allows the call and only notes
+             the caller's number; see CallScreeningBackupService. -->
+        <service
+            android:name=".notification.CallScreeningBackupService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
             </intent-filter>
         </service>
 

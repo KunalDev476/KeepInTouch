@@ -45,7 +45,7 @@ interface CallEventDao {
 
     /**
      * Unlinks (rather than deletes) call events from a schedule being deleted - the raw detected
-     * call still happened and stays useful in Settings > Diagnostics even once its match target is
+     * call still happened and stays on record even once its match target is
      * gone; only the now-dangling matchedScheduleId reference needs clearing. No FK/CASCADE on this
      * column (see CallEventEntity), so callers must do this explicitly on schedule deletion.
      */

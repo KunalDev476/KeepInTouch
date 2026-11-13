@@ -1,10 +1,15 @@
 package com.pragmaapps.keepintouch.data.reminder
 
+import com.pragmaapps.keepintouch.data.logging.Breadcrumbs
+import com.pragmaapps.keepintouch.data.logging.Breadcrumb
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import com.pragmaapps.keepintouch.data.logging.AppLogger
+import com.pragmaapps.keepintouch.data.logging.CrashReporter
+import com.pragmaapps.keepintouch.data.logging.DigestReminderArmFailed
+import com.pragmaapps.keepintouch.data.logging.DigestReminderCancelFailed
 import com.pragmaapps.keepintouch.domain.model.DigestReminderTime
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
@@ -39,6 +44,7 @@ class DigestReminderScheduler @Inject constructor(
             alarmManager().cancel(pendingIntentFor(reminderId))
         } catch (t: Throwable) {
             AppLogger.e(TAG, "Could not cancel digest reminder id=$reminderId", t)
+            CrashReporter.report(DigestReminderCancelFailed(t))
         }
     }
 
@@ -51,9 +57,11 @@ class DigestReminderScheduler @Inject constructor(
                 AlarmManager.INTERVAL_DAY,
                 pendingIntentFor(reminder.id)
             )
+            Breadcrumbs.log(Breadcrumb.DIGEST_SCHEDULED, "minutes_until_fire" to (triggerAt - System.currentTimeMillis()) / 60_000)
             AppLogger.i(TAG, "Armed digest reminder id=${reminder.id} (${reminder.label}) - next fires ~$triggerAt, then daily")
         } catch (t: SecurityException) {
             AppLogger.e(TAG, "Could not arm digest reminder id=${reminder.id}", t)
+            CrashReporter.report(DigestReminderArmFailed(t))
         }
     }
 

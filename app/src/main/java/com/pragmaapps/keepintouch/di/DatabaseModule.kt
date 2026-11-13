@@ -7,7 +7,6 @@ import com.pragmaapps.keepintouch.data.db.Migrations
 import com.pragmaapps.keepintouch.data.db.dao.CallEventDao
 import com.pragmaapps.keepintouch.data.db.dao.ContactDao
 import com.pragmaapps.keepintouch.data.db.dao.DigestReminderTimeDao
-import com.pragmaapps.keepintouch.data.db.dao.LogEntryDao
 import com.pragmaapps.keepintouch.data.db.dao.PendingMatchDao
 import com.pragmaapps.keepintouch.data.db.dao.ScheduleCompletionDao
 import com.pragmaapps.keepintouch.data.db.dao.ScheduleDao
@@ -30,9 +29,7 @@ object DatabaseModule {
     /**
      * No safe fallback if this fails (SQLCipher native lib missing, passphrase decryption
      * failing, a corrupt DB file) - the app cannot function without its database, so this must
-     * still crash. The try/catch only adds a log (mirrors to Logcat even before AppLogger's Room
-     * sink is available, since this can run as part of AppLogger.init() itself resolving
-     * LogEntryDao) before rethrowing, for diagnosability.
+     * still crash. The try/catch only adds a Logcat line before rethrowing, for diagnosability.
      */
     @Provides
     @Singleton
@@ -51,7 +48,8 @@ object DatabaseModule {
                 Migrations.MIGRATION_3_4,
                 Migrations.MIGRATION_4_5,
                 Migrations.MIGRATION_5_6,
-                Migrations.MIGRATION_6_7
+                Migrations.MIGRATION_6_7,
+                Migrations.MIGRATION_7_8
             )
             .build()
     } catch (t: Throwable) {
@@ -74,8 +72,6 @@ object DatabaseModule {
     @Provides
     fun providePendingMatchDao(db: AppDatabase): PendingMatchDao = db.pendingMatchDao()
 
-    @Provides
-    fun provideLogEntryDao(db: AppDatabase): LogEntryDao = db.logEntryDao()
 
     @Provides
     fun provideDigestReminderTimeDao(db: AppDatabase): DigestReminderTimeDao = db.digestReminderTimeDao()
