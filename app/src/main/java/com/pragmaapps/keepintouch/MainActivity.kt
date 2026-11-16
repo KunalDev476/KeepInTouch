@@ -1,8 +1,5 @@
 package com.pragmaapps.keepintouch
 
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.Icons
-import com.pragmaapps.keepintouch.data.permissions.DeviceVendor
 import com.pragmaapps.keepintouch.data.permissions.OptionalPermission
 import android.Manifest
 import android.content.pm.PackageManager
@@ -171,13 +168,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-    }
-
-    // TODO(testing): remove before release. Shows the vendor check every time the app comes to
-    // the foreground, to verify which phones get the optional call-screening page.
-    override fun onStart() {
-        super.onStart()
-        VendorDebugBanner.visible = true
     }
 
     override fun onResume() {
@@ -422,11 +412,6 @@ private fun KeepInTouchRoot(
             }
         }
     }
-
-    // TODO(testing): remove before release - see MainActivity.onStart().
-    if (VendorDebugBanner.visible) {
-        VendorDebugBanner.Card(onClose = { VendorDebugBanner.visible = false })
-    }
 }
 
 private val BottomNavMotion = tween<androidx.compose.ui.unit.Dp>(durationMillis = 260, easing = FastOutSlowInEasing)
@@ -550,42 +535,5 @@ private fun BottomNavItem(
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = contentColor
         )
-    }
-}
-
-/** TODO(testing): remove before release. Stays until closed with its X button. */
-private object VendorDebugBanner {
-    var visible by mutableStateOf(false)
-
-    @Composable
-    fun Card(onClose: () -> Unit) {
-        Box(Modifier.fillMaxSize().systemBarsPadding().padding(Spacing.md)) {
-            androidx.compose.material3.Card(
-                Modifier.fillMaxWidth().align(Alignment.TopCenter),
-                colors = androidx.compose.material3.CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.inverseSurface,
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface
-                ),
-                elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                androidx.compose.foundation.layout.Row(
-                    Modifier.fillMaxWidth().padding(start = Spacing.lg, top = Spacing.sm, bottom = Spacing.md, end = Spacing.xs)
-                ) {
-                    androidx.compose.material3.Text(
-                        "Maker: ${DeviceVendor.maker}\n" +
-                            "Brand: ${DeviceVendor.brand}\n" +
-                            "Show call screening: ${AppPermissions.shouldOfferCallScreening()}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f).padding(top = Spacing.sm)
-                    )
-                    androidx.compose.material3.IconButton(onClick = onClose) {
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.Close,
-                            contentDescription = "Close"
-                        )
-                    }
-                }
-            }
-        }
     }
 }
